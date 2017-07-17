@@ -39,8 +39,10 @@ params.snapshotDir = '../cachedir/snapshots/shapenet/' .. params.name
 params.imgSize = torch.Tensor({params.imgSizeX, params.imgSizeY})
 params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridSizeZ})
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
-params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
-params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
+--params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
+params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
+--params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
+params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_voxdata/' .. params.synset .. '/'
 print(params)
 -----------------------------
 -----------------------------

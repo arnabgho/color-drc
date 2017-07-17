@@ -12,22 +12,22 @@ local synset = classToSynset[params.class]
 local cmd = string.format('gpu=%d name=%s_voxels disp=%d synset=%s th synthetic/shapenetVoxels.lua',params.gpu,params.class, params.disp, synset)
 print(cmd)
 
--- Mask Experiment
-local cmd = string.format('gpu=%d nImgs=5 maskOnly=1 name=%s_mask_nIm5 disp=%d synset=%s th synthetic/shapenet.lua',params.gpu,params.class, params.disp, synset)
-print(cmd)
-
--- Depth Experiment
-local cmd = string.format('gpu=%d nImgs=5 maskOnly=0 name=%s_depth_nIm5 disp=%d synset=%s th synthetic/shapenet.lua',params.gpu,params.class, params.disp, synset)
-print(cmd)
-
--- Noisy Depth Experiment
-local cmd = string.format('gpu=%d useNoise=1 nImgs=5 maskOnly=0 name=%s_depth_nIm5_noise disp=%d synset=%s th synthetic/shapenet.lua',params.gpu,params.class, params.disp, synset)
-print(cmd)
-
--- Fusion Experiment
-local cmd = string.format('gpu=%d name=%s_fuse_nIm5 disp=%d synset=%s th synthetic/shapenetFused.lua',params.gpu,params.class, params.disp, synset)
-print(cmd)
-
--- Fusion Experiment (Noisy Depth)
-local cmd = string.format('gpu=%d useNoise=1 name=%s_fuse_nIm5_noise disp=%d synset=%s th synthetic/shapenetFused.lua',params.gpu,params.class, params.disp, synset)
-print(cmd)
+---- Mask Experiment
+--local cmd = string.format('gpu=%d nImgs=5 maskOnly=1 name=%s_mask_nIm5 disp=%d synset=%s th synthetic/shapenet.lua',params.gpu,params.class, params.disp, synset)
+--print(cmd)
+--
+---- Depth Experiment
+--local cmd = string.format('gpu=%d nImgs=5 maskOnly=0 name=%s_depth_nIm5 disp=%d synset=%s th synthetic/shapenet.lua',params.gpu,params.class, params.disp, synset)
+--print(cmd)
+--
+---- Noisy Depth Experiment
+--local cmd = string.format('gpu=%d useNoise=1 nImgs=5 maskOnly=0 name=%s_depth_nIm5_noise disp=%d synset=%s th synthetic/shapenet.lua',params.gpu,params.class, params.disp, synset)
+--print(cmd)
+--
+---- Fusion Experiment
+--local cmd = string.format('gpu=%d name=%s_fuse_nIm5 disp=%d synset=%s th synthetic/shapenetFused.lua',params.gpu,params.class, params.disp, synset)
+--print(cmd)
+--
+---- Fusion Experiment (Noisy Depth)
+--local cmd = string.format('gpu=%d useNoise=1 name=%s_fuse_nIm5_noise disp=%d synset=%s th synthetic/shapenetFused.lua',params.gpu,params.class, params.disp, synset)
+--print(cmd)

@@ -15,7 +15,8 @@ end
 local function getSplit(synset, saveDir, modelsDir)
     --paths.mkdir(saveDir)
     local saveDir = saveDir or ('../cachedir/splits/shapenet/')
-    local modelsDir = modelsDir or paths.concat('../cachedir/blenderRenderPreprocess/', synset)
+    --local modelsDir = modelsDir or paths.concat('../cachedir/blenderRenderPreprocess/', synset)
+    local modelsDir = modelsDir or paths.concat('../../../arnab/nips16_PTN/data/shapenetcore_viewdata/', synset)
     local saveFile = paths.concat(saveDir, synset .. '.file')
     if(paths.filep(saveFile)) then
         local spFile = torch.DiskFile(saveFile, 'r')
