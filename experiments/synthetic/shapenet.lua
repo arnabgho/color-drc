@@ -6,7 +6,7 @@ local gUtils = dofile('../rayUtils/grid.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local rp = dofile('../rayUtils/rpgeomWrapper.lua')
 local netInit = dofile('../nnutils/netInit.lua')
-local vUtil = dofile('../utils/visUtils.lua')
+local vUtils = dofile('../utils/visUtils.lua')
 local splitUtil = dofile('../benchmark/synthetic/splits.lua')
 -----------------------------
 --------parameters-----------
@@ -28,7 +28,7 @@ params.gridSizeX = 32
 params.gridSizeY = 32
 params.gridSizeZ = 32
 
-params.imsave = 0
+params.imsave = 1
 params.disp = 0
 params.maskOnly = 0
 params.nRaysTot = 3000
@@ -55,7 +55,8 @@ params.snapshotDir = '../cachedir/snapshots/shapenet/' .. params.name
 params.imgSize = torch.Tensor({params.imgSizeX, params.imgSizeY})
 params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridSizeZ})
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
-params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
+--params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
+params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
 assert(params.minDisp < 1/bgDepth) -- otherwise we won't sample layers that don't intersect CAD model and therefore have a bad estimate of free space
 print(params)
 -----------------------------

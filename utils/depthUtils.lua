@@ -1,4 +1,5 @@
-require 'json'
+json = require 'JSON'
+--require 'json'
 require 'image'
 local M = {}
 ----------
@@ -7,7 +8,11 @@ local function loadDisparity(dispDir, camDir, imgIdDisp, imgIdCamera)
     dispMap = torch.round(dispMap)
     local dispMask = torch.ne(dispMap, 0)
     dispMap = (dispMap:float() - 1)/256
-    local cam =  json.load(paths.concat(camDir, imgIdCamera .. '_camera.json'))
+    --local cam =  json.load(paths.concat(camDir, imgIdCamera .. '_camera.json'))
+    local f_json = io.open(paths.concat(camDir, imgIdCamera .. '_camera.json'), "rb")
+    local enc_content = f_json:read("*all")
+    f_json:close()
+    local cam =  json:decode(enc_content)
     local B  = cam['extrinsic']['baseline']
     local fx = cam['intrinsic']['fx']
     local dispMap = dispMap/(fx * B)
@@ -16,7 +21,11 @@ end
 ----------------
 local function loadCameraMat(camDir, imgId)
     local filler = torch.Tensor({0, 0, 0, 1}):reshape(1,4)
-    local cam =  json.load(paths.concat(camDir, imgId .. '_camera.json'))
+    --local cam =  json.load(paths.concat(camDir, imgId .. '_camera.json'))
+    local f_json = io.open(paths.concat(camDir, imgId .. '_camera.json'), "rb")
+    local enc_content = f_json:read("*all")
+    f_json:close()
+    local cam =  json:decode(enc_content)
     local fx = cam['intrinsic']['fx']
     local fy = cam['intrinsic']['fy']
     local u0 = cam['intrinsic']['u0']
@@ -75,7 +84,11 @@ local function loadMotionMat(dataDir, ids)
     local filler = torch.Tensor({0, 0, 0, 1}):reshape(1,4)
     for ix=1,#ids do
         local odomFile = paths.concat(dataDir, ids[ix] .. '_vehicle.json')
-        local odom = json.load(odomFile)
+        --local odom = json.load(odomFile)
+        local f_json = io.open(odomFile, "rb")
+        local enc_content = f_json:read("*all")
+        f_json:close()
+        local odom =  json:decode(enc_content)
         local yaw = -odom['yawRate'] * time
         
         local tx = odom['speed'] * odom['yawRate'] * (time^2)/2.

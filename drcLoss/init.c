@@ -253,8 +253,9 @@ int luaopen_librpsem(lua_State *L)
   // Create a new table
   lua_newtable(L);
   // Add your functions as elements of the table
-  luaL_register(L, NULL, routines);
-
+  //luaL_register(L, NULL, routines);
+  lua_pushvalue(L,-1);
+  lua_setglobal(L, "routines"  );
   // This function returns one element (the table containing the functions)
   return 1;
 }

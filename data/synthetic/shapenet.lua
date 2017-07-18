@@ -69,8 +69,8 @@ function dataLoader:forward()
             local numSamples =  self.nRaysPerCam
             local imgNum = rPerm[nc] - 1
             --local imgNum = (nc==1) and inpImgNum or torch.random(0,nImgs-1)
-            local camData = matio.load(string.format('%s/camera_%d.mat',imgsDir,imgNum),{'pos','quat','K','extrinsic'})
-            local dMap = (image.load(string.format('%s/%s_%d.png',imgsDir,self.depthPrefix,imgNum))*maxSavedDepth)
+            local camData = matio.load(string.format('%s/camera_%d.mat',imgsDir,imgNum),{'pos','quat','K','extrinsic'}) --TODO
+            local dMap = (image.load(string.format('%s/%s_%d.png',imgsDir,self.depthPrefix,imgNum))*maxSavedDepth) --TODO
             local disparityIm = dMap:clone():pow(-1)
             local dispMask = torch.Tensor(dMap:size()):fill(1)
             

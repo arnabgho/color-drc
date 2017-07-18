@@ -4,7 +4,7 @@ require 'optim'
 local data = dofile('../data/synthetic/shapenetVoxels.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
-local vUtil = dofile('../utils/visUtils.lua')
+local vUtils = dofile('../utils/visUtils.lua')
 -----------------------------
 --------parameters-----------
 local params = {}
@@ -20,7 +20,7 @@ params.gridSizeX = 32
 params.gridSizeY = 32
 params.gridSizeZ = 32
 
-params.imsave = 0
+params.imsave = 1
 params.disp = 0
 params.bottleneckSize = 100
 params.visIter = 100
@@ -83,6 +83,7 @@ local splitUtil = dofile('../benchmark/synthetic/splits.lua')
 local trainModels = splitUtil.getSplit(params.synset)['train']
 local dataLoader = data.dataLoader(params.modelsDataDir, params.voxelsDir, params.batchSize, params.imgSize, params.gridSize, trainModels)
 local netRecons = nn.Sequential():add(encoder):add(decoder)
+--local netRecons = torch.load(params.snapshotDir .. '/iter10000.t7')
 netRecons = netRecons:cuda()
 lossFunc = lossFunc:cuda()
 --print(encoder)
@@ -122,6 +123,7 @@ end
 -----------------------------
 ----------Training-----------
 if(params.display) then disp = require 'display' end
+local forwIter = 0
 for iter=1,params.numTrainIter do
     print(iter,err)
     --print(('Data/Total time : %f/%f'):format(data_tm:time().real,tm:time().real))
@@ -141,9 +143,9 @@ for iter=1,params.numTrainIter do
         end
         if(params.imsave == 1) then
             vUtils.imsave(imgs, params.visDir .. '/inputIm'.. iter .. '.png')
-            vUtils.imsave(dispVar:max(3):squeeze(), params.visDir.. '/predX' .. iter .. 'step'.. forwIter .. '.png')
-            vUtils.imsave(dispVar:max(4):squeeze(), params.visDir.. '/predY' .. iter .. 'step'.. forwIter .. '.png')
-            vUtils.imsave(dispVar:max(5):squeeze(), params.visDir.. '/predZ' .. iter .. 'step'.. forwIter .. '.png')
+            vUtils.imsave(dispVar:max(3):squeeze(), params.visDir.. '/predX' .. iter .. '.png')
+            vUtils.imsave(dispVar:max(4):squeeze(), params.visDir.. '/predY' .. iter .. '.png')
+            vUtils.imsave(dispVar:max(5):squeeze(), params.visDir.. '/predZ' .. iter .. '.png')
         end
     end
     if(iter%5000)==0 then

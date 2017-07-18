@@ -4,7 +4,7 @@ local rpsem = require 'rpsem'
 -------------------------------
 local rayPotential = {}
 rayPotential.__index = rayPotential
-
+unpack = unpack or table.unpack
 setmetatable(rayPotential, {
     __call = function (cls, ...)
         return cls.new(...)
