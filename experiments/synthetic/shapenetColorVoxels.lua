@@ -2,7 +2,7 @@ torch.manualSeed(1)
 require 'cunn'
 require 'optim'
 matio=require 'matio'
-local data = dofile('../data/synthetic/shapenetVoxels.lua')
+local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
@@ -21,20 +21,20 @@ params.gridSizeX = 32
 params.gridSizeY = 32
 params.gridSizeZ = 32
 
-params.imsave = 1
 params.matsave=1
-params.disp = 1
+params.imsave = 0
+params.disp = 0
 params.bottleneckSize = 100
 params.visIter = 100
 params.nConvEncLayers = 5
 params.nConvDecLayers = 4
 params.nConvEncChannelsInit = 8
+params.nVoxelChannels = 3
 params.numTrainIter = 10000
 params.ip = '131.159.40.120'
 params.port = 8000
 -- one-line argument parser. parses enviroment variables to override the defaults
 for k,v in pairs(params) do params[k] = tonumber(os.getenv(k)) or os.getenv(k) or params[k] end
-
 if params.disp == 0 then params.display = false else params.display = true end
 if params.imsave == 0 then params.imsave = false end
 params.visDir = '../cachedir/visualization/' .. params.name
@@ -45,7 +45,7 @@ params.synset = '0' .. tostring(params.synset) --to resolve string/number issues
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
 params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
-params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_voxdata/' .. params.synset .. '/'
+params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
 params.voxelSaveDir= params.visDir .. '/vox'
 print(params)
 -----------------------------
@@ -60,7 +60,8 @@ end
 fout:flush()
 -----------------------------
 ----------LossComp-----------
-local lossFunc = nn.BCECriterion()
+--local lossFunc = nn.BCECriterion()
+local lossFunc = nn.MSECriterion()
 -----------------------------
 ----------Encoder------------
 local encoder, nOutChannels = netBlocks.convEncoderSimple2d(params.nConvEncLayers,params.nConvEncChannelsInit,3,true) --output is nConvEncChannelsInit*pow(2,nConvEncLayers-1) X imgSize/pow(2,nConvEncLayers)
@@ -79,7 +80,7 @@ encoder:apply(netInit.weightsInit)
 ----------World Decoder----------
 local featSpSize = params.gridSize/torch.pow(2,params.nConvDecLayers)
 local decoder  = nn.Sequential():add(nn.SpatialConvolution(params.bottleneckSize,nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3],1,1,1)):add(nn.SpatialBatchNormalization(nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3])):add(nn.ReLU(true)):add(nn.Reshape(nOutChannels,featSpSize[1],featSpSize[2],featSpSize[3],true))
-decoder:add(netBlocks.convDecoderSimple3d(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,1,true))
+decoder:add(netBlocks.convDecoderSimple3d(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,params.nVoxelChannels,true))
 decoder:apply(netInit.weightsInit)
 -----------------------------
 ----------Recons-------------
@@ -113,7 +114,6 @@ local fx = function(x)
     imgs, voxelsGt = dataLoader:forward()
     data_tm:stop()
     --print('Data loaded')
-    
     imgs = imgs:cuda()
     voxelsGt = voxelsGt:cuda()
     pred = netRecons:forward(imgs)

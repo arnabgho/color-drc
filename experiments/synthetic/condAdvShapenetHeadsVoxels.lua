@@ -2,10 +2,11 @@ torch.manualSeed(1)
 require 'cunn'
 require 'optim'
 matio=require 'matio'
-local data = dofile('../data/synthetic/shapenetVoxels.lua')
+local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
+local model_utils = dofile('../utils/model_utils.lua')
 -----------------------------
 --------parameters-----------
 local params = {}
@@ -21,20 +22,24 @@ params.gridSizeX = 32
 params.gridSizeY = 32
 params.gridSizeZ = 32
 
-params.imsave = 1
+params.lambda_l1 = 1
+
 params.matsave=1
-params.disp = 1
+params.imsave = 0
+params.disp = 0
 params.bottleneckSize = 100
+params.noiseSize = 100
 params.visIter = 100
 params.nConvEncLayers = 5
 params.nConvDecLayers = 4
 params.nConvEncChannelsInit = 8
+params.nVoxelChannels = 3
+params.nOccChannels = 1
 params.numTrainIter = 10000
 params.ip = '131.159.40.120'
 params.port = 8000
 -- one-line argument parser. parses enviroment variables to override the defaults
 for k,v in pairs(params) do params[k] = tonumber(os.getenv(k)) or os.getenv(k) or params[k] end
-
 if params.disp == 0 then params.display = false else params.display = true end
 if params.imsave == 0 then params.imsave = false end
 params.visDir = '../cachedir/visualization/' .. params.name
@@ -45,7 +50,7 @@ params.synset = '0' .. tostring(params.synset) --to resolve string/number issues
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
 params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
-params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_voxdata/' .. params.synset .. '/'
+params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
 params.voxelSaveDir= params.visDir .. '/vox'
 print(params)
 -----------------------------
@@ -61,9 +66,13 @@ fout:flush()
 -----------------------------
 ----------LossComp-----------
 local lossFunc = nn.BCECriterion()
+local colLossFunc =  nn.AbsCriterion()             --nn.MSECriterion()
+local ganLossFunc = nn.BCECriterion()
 -----------------------------
-----------Encoder------------
-local encoder, nOutChannels = netBlocks.convEncoderSimple2d(params.nConvEncLayers,params.nConvEncChannelsInit,3,true) --output is nConvEncChannelsInit*pow(2,nConvEncLayers-1) X imgSize/pow(2,nConvEncLayers)
+----------Encoder-----------
+local G={}
+local nOutChannels=nil
+G.encoder, nOutChannels = netBlocks.convEncoderSimple2d(params.nConvEncLayers,params.nConvEncChannelsInit,3,true) --output is nConvEncChannelsInit*pow(2,nConvEncLayers-1) X imgSize/pow(2,nConvEncLayers)
 local featSpSize = params.imgSize/torch.pow(2,params.nConvEncLayers)
 --print(featSpSize)
 local bottleneck = nn.Sequential():add(nn.Reshape(nOutChannels*featSpSize[1]*featSpSize[2],1,1,true))
@@ -72,40 +81,61 @@ for nLayers=1,2 do --fc for joint reasoning
     bottleneck:add(nn.SpatialConvolution(nInputCh,params.bottleneckSize,1,1)):add(nn.SpatialBatchNormalization(params.bottleneckSize)):add(nn.LeakyReLU(0.2, true))
     nInputCh = params.bottleneckSize
 end
-encoder:add(bottleneck)
-encoder:apply(netInit.weightsInit)
---print(encoder)
+G.encoder:add(bottleneck)
+G.encoder:apply(netInit.weightsInit)
+--print(G.encoder)
 ---------------------------------
 ----------World Decoder----------
 local featSpSize = params.gridSize/torch.pow(2,params.nConvDecLayers)
-local decoder  = nn.Sequential():add(nn.SpatialConvolution(params.bottleneckSize,nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3],1,1,1)):add(nn.SpatialBatchNormalization(nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3])):add(nn.ReLU(true)):add(nn.Reshape(nOutChannels,featSpSize[1],featSpSize[2],featSpSize[3],true))
-decoder:add(netBlocks.convDecoderSimple3d(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,1,true))
-decoder:apply(netInit.weightsInit)
+G.decoder = nn.Sequential()
+local parallel_inputs=nn.ParallelTable():add(nn.Identity()):add(nn.Identity())
+G.decoder:add(parallel_inputs)
+G.decoder:add(nn.JoinTable(1,3))
+G.decoder:add(nn.SpatialConvolution(params.bottleneckSize + params.noiseSize,nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3],1,1,1)):add(nn.SpatialBatchNormalization(nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3])):add(nn.ReLU(true)):add(nn.Reshape(nOutChannels,featSpSize[1],featSpSize[2],featSpSize[3],true))
+G.decoder:add(netBlocks.convDecoderSimple3dHeads(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,params.nVoxelChannels,params.nOccChannels,true))
+G.decoder:apply(netInit.weightsInit)
+
+local netD=netBlocks.ConditionalDiscriminator(3,64,true)
+print(netD)
 -----------------------------
 ----------Recons-------------
 local splitUtil = dofile('../benchmark/synthetic/splits.lua')
 local trainModels = splitUtil.getSplit(params.synset)['train']
 local dataLoader = data.dataLoader(params.modelsDataDir, params.voxelsDir, params.batchSize, params.imgSize, params.gridSize, trainModels)
-local netRecons = nn.Sequential():add(encoder):add(decoder)
+--local netRecons = nn.Sequential():add(G.encoder):add(G.decoder)
 --local netRecons = torch.load(params.snapshotDir .. '/iter10000.t7')
-netRecons = netRecons:cuda()
+--netRecons = netRecons:cuda()
+for k,net in pairs(G) do net:cuda() end
+netD=netD:cuda()
 lossFunc = lossFunc:cuda()
---print(encoder)
+colLossFunc = colLossFunc:cuda()
+ganLossFunc = ganLossFunc:cuda()
+--print(G.encoder)
 --print(decoder)
 local err = 0
-
+local errD = 0
 -- Optimization parameters
 local optimState = {
    learningRate = 0.0001,
    beta1 = 0.9,
 }
-
-local netParameters, netGradParameters = netRecons:getParameters()
+local optimStateD = {
+   learningRate = 0.0001,
+   beta1 = 0.9,
+}
+--local netParameters, netGradParameters = netRecons:getParameters()
+local netParameters, netGradParameters = model_utils.combine_all_parameters(G)
+local netDParameters, netDGradParameters = netD:getParameters()
 local tm = torch.Timer()
 local data_tm = torch.Timer()
 local imgs, pred, rays
-
 -- fX required for training
+local input=torch.Tensor(params.batchSize,3,params.gridSizeX,params.gridSizeY,params.gridSizeZ)
+local label = torch.Tensor(params.batchSize)
+input=input:cuda()
+label=label:cuda()
+local real_label=1
+local fake_label=0
 local fx = function(x)
     tm:reset(); tm:resume()
     netGradParameters:zero()
@@ -113,16 +143,65 @@ local fx = function(x)
     imgs, voxelsGt = dataLoader:forward()
     data_tm:stop()
     --print('Data loaded')
-    
+    local voxelsOcc=torch.sum(voxelsGt,2)
+    voxelsOcc:apply( function(x) 
+      if x>2.99 then return 0
+      else return 1
+      end 
+    end)
+
+
     imgs = imgs:cuda()
     voxelsGt = voxelsGt:cuda()
-    pred = netRecons:forward(imgs)
-    err = lossFunc:forward(pred, voxelsGt)
-    local gradPred = lossFunc:backward(pred, voxelsGt)
-    netRecons:backward(imgs, gradPred)
+    voxelsOcc= voxelsOcc:cuda()
+
+    local encoded=G.encoder:forward(imgs)
+    local noise=torch.Tensor(params.batchSize,params.noiseSize,1,1):cuda()
+    noise:normal(0,1)
+    G.decoder:forward({encoded,noise})
+
+    color=G.decoder.output[1]
+    pred=G.decoder.output[2]
+    
+    err = lossFunc:forward(pred, voxelsOcc)
+    err = err + params.lambda_l1*colLossFunc:forward(color,voxelsGt)
+    local gradPred = lossFunc:backward(pred, voxelsOcc)
+    local gradColor = colLossFunc:backward(color,voxelsGt):mul(params.lambda_l1)
+    label:fill(real_label)
+    local output=netD:forward({  color , imgs })
+    err = err + ganLossFunc:forward(output,label)
+    local df_do= ganLossFunc:backward(output,label)
+    gradColor = gradColor + netD:updateGradInput({color,imgs},df_do)[1]
+
+    local d_decoder = G.decoder:backward({encoded,noise}, { gradColor , gradPred})
+    G.encoder:backward(imgs,d_decoder[1])
     tm:stop()
     return err, netGradParameters
 end
+
+local fDx = function(x)
+    netDGradParameters:zero()
+
+    -- train with real colored voxels
+    input:copy(voxelsGt)
+    label:fill(real_label)
+    local output=netD:forward({input,imgs})
+    local errD_real=ganLossFunc:forward(output,label)
+    local df_do = ganLossFunc:backward(output,label)
+    netD:backward({input,imgs},df_do)
+
+    -- train with generated colored voxels
+    input:copy(color)
+    label:fill(fake_label)
+    local output=netD:forward({input,imgs})
+    local errD_fake=ganLossFunc:forward(output,label)
+    local df_do = ganLossFunc:backward(output,label)
+    netD:backward({input,imgs},df_do)
+    
+    errD= errD_real + errD_fake
+    return errD, netDGradParameters
+end
+
 --print(netRecons)
 -----------------------------
 ----------Training-----------
@@ -132,7 +211,13 @@ if(params.display) then
 end
 local forwIter = 0
 for iter=1,params.numTrainIter do
-    print(iter,err)
+   
+    print(('Epoch: [%d][%8d / %8d]\t Time: %.3f  DataTime: %.3f  '
+        .. '  Err_G: %.4f  Err_D: %.4f'):format(
+        iter, ((iter-1) / params.batchSize),
+        math.floor( params.numTrainIter / params.batchSize),
+        tm:time().real, data_tm:time().real,
+        err and err or -1, errD and errD or -1))
     --print(('Data/Total time : %f/%f'):format(data_tm:time().real,tm:time().real))
     fout:write(string.format('%d %f\n',iter,err))
     fout:flush()
@@ -159,12 +244,15 @@ for iter=1,params.numTrainIter do
             paths.mkdir(vox_dir)
             for i =1,params.batchSize do
                 matio.save(vox_dir .. string.format('/gt_%03d.mat',i),voxelsGt[i]:float())
-                matio.save(vox_dir ..  string.format('/pred_%03d.mat',i),pred[i]:float())
+                matio.save(vox_dir ..  string.format('/pred_%03d.mat',i),color[i]:float())
+                matio.save(vox_dir ..  string.format('/pred_occ%03d.mat',i),pred[i]:float())
             end
         end
     end
     if(iter%5000)==0 then
-        torch.save(params.snapshotDir .. '/iter'.. iter .. '.t7', netRecons)
+        torch.save(params.snapshotDir .. '/iter'.. iter .. '_netG.t7', {G=G})
+        torch.save(params.snapshotDir .. '/iter'.. iter .. '_NetD.t7', netD)
     end
     optim.adam(fx, netParameters, optimState)
+    optim.adam(fDx,netDParameters,optimStateD)
 end

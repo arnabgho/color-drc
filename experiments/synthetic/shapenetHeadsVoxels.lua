@@ -2,7 +2,7 @@ torch.manualSeed(1)
 require 'cunn'
 require 'optim'
 matio=require 'matio'
-local data = dofile('../data/synthetic/shapenetVoxels.lua')
+local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
@@ -21,20 +21,21 @@ params.gridSizeX = 32
 params.gridSizeY = 32
 params.gridSizeZ = 32
 
-params.imsave = 1
 params.matsave=1
-params.disp = 1
+params.imsave = 0
+params.disp = 0
 params.bottleneckSize = 100
 params.visIter = 100
 params.nConvEncLayers = 5
 params.nConvDecLayers = 4
 params.nConvEncChannelsInit = 8
+params.nVoxelChannels = 3
+params.nOccChannels = 1
 params.numTrainIter = 10000
 params.ip = '131.159.40.120'
 params.port = 8000
 -- one-line argument parser. parses enviroment variables to override the defaults
 for k,v in pairs(params) do params[k] = tonumber(os.getenv(k)) or os.getenv(k) or params[k] end
-
 if params.disp == 0 then params.display = false else params.display = true end
 if params.imsave == 0 then params.imsave = false end
 params.visDir = '../cachedir/visualization/' .. params.name
@@ -45,7 +46,7 @@ params.synset = '0' .. tostring(params.synset) --to resolve string/number issues
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
 params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
-params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_voxdata/' .. params.synset .. '/'
+params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
 params.voxelSaveDir= params.visDir .. '/vox'
 print(params)
 -----------------------------
@@ -61,6 +62,7 @@ fout:flush()
 -----------------------------
 ----------LossComp-----------
 local lossFunc = nn.BCECriterion()
+local colLossFunc = nn.AbsCriterion()  --nn.MSECriterion()
 -----------------------------
 ----------Encoder------------
 local encoder, nOutChannels = netBlocks.convEncoderSimple2d(params.nConvEncLayers,params.nConvEncChannelsInit,3,true) --output is nConvEncChannelsInit*pow(2,nConvEncLayers-1) X imgSize/pow(2,nConvEncLayers)
@@ -79,7 +81,7 @@ encoder:apply(netInit.weightsInit)
 ----------World Decoder----------
 local featSpSize = params.gridSize/torch.pow(2,params.nConvDecLayers)
 local decoder  = nn.Sequential():add(nn.SpatialConvolution(params.bottleneckSize,nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3],1,1,1)):add(nn.SpatialBatchNormalization(nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3])):add(nn.ReLU(true)):add(nn.Reshape(nOutChannels,featSpSize[1],featSpSize[2],featSpSize[3],true))
-decoder:add(netBlocks.convDecoderSimple3d(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,1,true))
+decoder:add(netBlocks.convDecoderSimple3dHeads(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,params.nVoxelChannels,params.nOccChannels,true))
 decoder:apply(netInit.weightsInit)
 -----------------------------
 ----------Recons-------------
@@ -90,6 +92,7 @@ local netRecons = nn.Sequential():add(encoder):add(decoder)
 --local netRecons = torch.load(params.snapshotDir .. '/iter10000.t7')
 netRecons = netRecons:cuda()
 lossFunc = lossFunc:cuda()
+colLossFunc = colLossFunc:cuda()
 --print(encoder)
 --print(decoder)
 local err = 0
@@ -113,13 +116,25 @@ local fx = function(x)
     imgs, voxelsGt = dataLoader:forward()
     data_tm:stop()
     --print('Data loaded')
-    
+    local voxelsOcc=torch.sum(voxelsGt,2)
+    voxelsOcc:apply( function(x) 
+      if x>2.99 then return 0
+      else return 1
+      end 
+    end)
+
+
     imgs = imgs:cuda()
     voxelsGt = voxelsGt:cuda()
-    pred = netRecons:forward(imgs)
-    err = lossFunc:forward(pred, voxelsGt)
-    local gradPred = lossFunc:backward(pred, voxelsGt)
-    netRecons:backward(imgs, gradPred)
+    voxelsOcc= voxelsOcc:cuda()
+    netRecons:forward(imgs)
+    color=netRecons.output[1]
+    pred=netRecons.output[2]
+    err = lossFunc:forward(pred, voxelsOcc)
+    err = err + colLossFunc:forward(color,voxelsGt)
+    local gradPred = lossFunc:backward(pred, voxelsOcc)
+    local gradColor = colLossFunc:backward(color,voxelsGt)
+    netRecons:backward(imgs, { gradColor , gradPred})
     tm:stop()
     return err, netGradParameters
 end
@@ -159,7 +174,8 @@ for iter=1,params.numTrainIter do
             paths.mkdir(vox_dir)
             for i =1,params.batchSize do
                 matio.save(vox_dir .. string.format('/gt_%03d.mat',i),voxelsGt[i]:float())
-                matio.save(vox_dir ..  string.format('/pred_%03d.mat',i),pred[i]:float())
+                matio.save(vox_dir ..  string.format('/pred_%03d.mat',i),color[i]:float())
+                matio.save(vox_dir ..  string.format('/pred_occ%03d.mat',i),pred[i]:float())
             end
         end
     end
