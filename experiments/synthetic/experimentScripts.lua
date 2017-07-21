@@ -9,16 +9,25 @@ local classToSynset = {chair='3001627', aero='2691156', car='2958343'}
 local synset = classToSynset[params.class]
 
 
+-- ShapeNet Masked Conditional Adversarial Heads with Colored Voxels Experiment
+local cmd = string.format('gpu=%d name=%s_maskedcondadvheadsvoxels disp=%d synset=%s th synthetic/maskedCondAdvShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
+-- print(cmd)
+
+
+
 -- ShapeNet  Conditional Adversarial Heads with Colored Voxels Experiment
--- local cmd = string.format('gpu=%d name=%s_condadvheadsvoxels disp=%d synset=%s th synthetic/condAdvShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
+--local cmd = string.format('gpu=%d name=%s_condadvheadsvoxels disp=%d synset=%s th synthetic/condAdvShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
 -- print(cmd)
 
 
 
 -- ShapeNet Adversarial Heads with Colored Voxels Experiment
-local cmd = string.format('gpu=%d name=%s_advheadsvoxels disp=%d synset=%s th synthetic/advShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
-    print(cmd)
+--local cmd = string.format('gpu=%d name=%s_advheadsvoxels disp=%d synset=%s th synthetic/advShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
+--print(cmd)
 
+-- ShapeNet Masked Heads with Colored Voxels Experiment
+--local cmd = string.format('gpu=%d name=%s_maskedheadsvoxels disp=%d synset=%s th synthetic/maskedShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
+--print(cmd)
 
 
 -- ShapeNet Heads with Colored Voxels Experiment
@@ -54,3 +63,6 @@ local cmd = string.format('gpu=%d name=%s_advheadsvoxels disp=%d synset=%s th sy
 ---- Fusion Experiment (Noisy Depth)
 --local cmd = string.format('gpu=%d useNoise=1 name=%s_fuse_nIm5_noise disp=%d synset=%s th synthetic/shapenetFused.lua',params.gpu,params.class, params.disp, synset)
 --print(cmd)
+--
+--
+print(cmd)

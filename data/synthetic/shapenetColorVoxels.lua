@@ -37,7 +37,7 @@ end
 
 function dataLoader:forward()
     local imgs = torch.Tensor(self.bs, 3, self.imgSize[1], self.imgSize[2]):fill(0)
-    local voxels = torch.Tensor(self.bs, 1, self.voxelSize[1], self.voxelSize[2], self.voxelSize[3]):fill(0)
+    local voxels = torch.Tensor(self.bs, 3, self.voxelSize[1], self.voxelSize[2], self.voxelSize[3]):fill(0)
     for b = 1,self.bs do
         local mId = torch.random(1,#self.modelNames)
         local imgsDir = paths.concat(self.imgsDir, self.modelNames[mId]) 
@@ -61,7 +61,7 @@ function dataLoader:forward()
         
         local voxelFile = paths.concat(self.voxelsDir, self.modelNames[mId] .. '/model_32.mat')
         --local voxelFile = paths.concat(self.voxelsDir, self.modelNames[mId] .. '.mat')
-        voxels[b][1] = matio.load(voxelFile,{'voxel'})['voxel']:typeAs(voxels)
+        voxels[b] = matio.load(voxelFile,{'voxel'})['voxel']:typeAs(voxels)
         --voxels[b][1] = matio.load(voxelFile,{'Volume'})['Volume']:typeAs(voxels)
     end
     --voxels = voxels:transpose(5,4) --to match things done when rendering via blender --TODO do we need it? 

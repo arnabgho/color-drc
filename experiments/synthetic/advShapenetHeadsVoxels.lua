@@ -27,7 +27,7 @@ params.matsave=1
 params.imsave = 0
 params.disp = 0
 params.bottleneckSize = 100
-params.noiseSize = 100
+params.noiseSize = 1
 params.visIter = 100
 params.nConvEncLayers = 5
 params.nConvDecLayers = 4
@@ -65,7 +65,8 @@ fout:flush()
 -----------------------------
 ----------LossComp-----------
 local lossFunc = nn.BCECriterion()
-local colLossFunc =  nn.AbsCriterion()  --nn.MSECriterion()
+--local colLossFunc =  nn.AbsCriterion()  
+local colLossFunc = nn.MSECriterion()
 local ganLossFunc = nn.BCECriterion()
 -----------------------------
 ----------Encoder-----------

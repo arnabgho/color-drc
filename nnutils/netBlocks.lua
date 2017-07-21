@@ -124,6 +124,115 @@ function M.convDecoderSimple3d(nLayers, nInputChannels, ndf, nFinalChannels, use
     return decoder
 end
 
+function M.convDecoderSimple3dHeads(nLayers, nInputChannels, ndf, nFinalChannels1, nFinalChannels2, useBn, normalizeOut)
+    --adds nLayers deconv layers + 1 conv layer
+    local nFinalChannels = nFinalChannels or 1
+    local ndf = ndf or 8 --channels in penultimate layer
+    local useBn = useBn~=false and true
+    local normalizeOut = normalizeOut~=false and true
+    local nOutputChannels = ndf*torch.pow(2,nLayers-1)
+    local decoder = nn.Sequential()
+    for l=1,nLayers do
+        decoder:add(nn.VolumetricFullConvolution(nInputChannels, nOutputChannels, 4, 4, 4, 2, 2, 2, 1, 1, 1))
+        if useBn then decoder:add(nn.VolumetricBatchNormalization(nOutputChannels)) end
+        decoder:add(nn.ReLU(true))
+        nInputChannels = nOutputChannels
+        nOutputChannels = nOutputChannels/2
+    end
+    local head1=nn.Sequential()
+    local head2=nn.Sequential()
+    head1:add(nn.VolumetricConvolution(ndf, nFinalChannels1, 3, 3, 3, 1, 1, 1, 1, 1, 1))
+    head2:add(nn.VolumetricConvolution(ndf, nFinalChannels2, 3, 3, 3, 1, 1, 1, 1, 1, 1))
+
+    if(normalizeOut) then
+        head1:add(nn.Tanh()):add(nn.AddConstant(1)):add(nn.MulConstant(0.5))
+        head2:add(nn.Tanh()):add(nn.AddConstant(1)):add(nn.MulConstant(0.5))
+    end
+    decoder:add(nn.ConcatTable():add(head1):add(head2))
+    return decoder
+end
+
+function M.SimpleDiscriminator(nInputChannels,ndf,useBn)
+   local netD = nn.Sequential()
+   local useBn = useBn ~= false and true
+   local ndf = ndf or 8
+
+   --input is (nInputChannels) x 32 x 32 x 32
+   netD:add(nn.VolumetricConvolution(nInputChannels, ndf, 4, 4, 4, 2, 2, 2, 1, 1, 1))
+   netD:add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf) x 16 x 16 x 16
+   netD:add(nn.VolumetricConvolution(ndf, ndf * 2, 4, 4, 4 , 2, 2, 2 ,1 , 1, 1))
+   netD:add(nn.VolumetricBatchNormalization(ndf * 2)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*2) x 8 x 8 x 8
+   netD:add(nn.VolumetricConvolution(ndf * 2, ndf * 4, 4, 4, 4, 2, 2, 2,1, 1, 1))
+   netD:add(nn.VolumetricBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*4) x 4 x 4 x 4
+   --netD:add(VolumetricConvolution(ndf * 4, ndf * 8, 4, 4, 4, 2, 2,2,1, 1,1))
+   --netD:add(SpatialBatchNormalization(ndf * 8)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*8) x 2 x 2
+   netD:add(nn.VolumetricConvolution(ndf * 4, 1, 4, 4 , 4))
+   netD:add(nn.Sigmoid())
+   -- state size: 1 x 1 x 1
+   netD:add(nn.View(1):setNumInputDims(3))
+   -- state size: 1
+   return netD
+end
+
+function M.ConditionalDiscriminator(nInputChannels,ndf,useBn)
+   local useBn = useBn ~= false and true
+   local ndf = ndf or 8
+
+   local netD=nn.Sequential()
+   local net3D = nn.Sequential()
+   --input is (nInputChannels) x 32 x 32 x 32
+   net3D:add(nn.VolumetricConvolution(nInputChannels, ndf, 4, 4, 4, 2, 2, 2, 1, 1, 1))
+   net3D:add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf) x 16 x 16 x 16
+   net3D:add(nn.VolumetricConvolution(ndf, ndf * 2, 4, 4, 4 , 2, 2, 2 ,1 , 1, 1))
+   net3D:add(nn.VolumetricBatchNormalization(ndf * 2)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*2) x 8 x 8 x 8
+   net3D:add(nn.VolumetricConvolution(ndf * 2, ndf * 4, 4, 4, 4, 2, 2, 2,1, 1, 1))
+   net3D:add(nn.VolumetricBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*4) x 4 x 4 x 4
+   net3D:add(nn.Reshape( ndf*4*4*4*4))
+
+   local net2D = nn.Sequential()
+   --input is (nInputChannels) x 64 x 64
+   net2D:add(nn.SpatialConvolution(nInputChannels, ndf, 4, 4,  2, 2,  1, 1))
+   net2D:add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf) x 32 x 32 
+   net2D:add(nn.SpatialConvolution(ndf, ndf * 2, 4, 4 , 2,  2 ,1 ,  1))
+   net2D:add(nn.SpatialBatchNormalization(ndf * 2)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*2) x 16 x 16 
+   net2D:add(nn.SpatialConvolution(ndf * 2, ndf * 4,  4, 4, 2, 2,1, 1))
+   net2D:add(nn.SpatialBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
+
+   -- state size: (ndf*4) x 8 x 8
+   net2D:add(nn.SpatialConvolution(ndf *4, ndf * 4,  4, 4, 2, 2,1, 1))
+   net2D:add(nn.SpatialBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
+ 
+   -- state size: (ndf*4) x 4 x 4
+   net2D:add(nn.Reshape(ndf*4*4*4))
+    
+   netD:add(nn.ParallelTable():add(net3D):add(net2D))
+   netD:add(nn.JoinTable(1,1))
+   netD:add(nn.Linear(ndf*4*4*4*5, ndf*4*4*4)) 
+   netD:add(nn.BatchNormalization(ndf*4*4*4)):add(nn.LeakyReLU(0.2,true))
+   
+   netD:add(nn.Linear(ndf*4*4*4, ndf*4*4)) 
+   netD:add(nn.BatchNormalization(ndf*4*4)):add(nn.LeakyReLU(0.2,true))
+
+   netD:add(nn.Linear(ndf*4*4, ndf*4)) 
+   netD:add(nn.BatchNormalization(ndf*4)):add(nn.LeakyReLU(0.2,true))
+
+   netD:add(nn.Linear(ndf*4, 1))
+
+   netD:add(nn.Sigmoid())
+
+   return netD
+end
+
+
 function M.VolumetricSoftMax(nC)
     -- input is B X C X H X W X D, output is also B X C X H X W X D but normalized across C
     local inpPred = -nn.Identity()

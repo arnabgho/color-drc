@@ -151,11 +151,13 @@ local fx = function(x)
       end 
     end)
 
+    local occMask=torch.repeatTensor(voxelsOcc,1,3,1,1,1)
 
     imgs = imgs:cuda()
     voxelsGt = voxelsGt:cuda()
     voxelsOcc= voxelsOcc:cuda()
-
+    occMask=occMask:cuda()
+    
     local encoded=G.encoder:forward(imgs)
     local noise=torch.Tensor(params.batchSize,params.noiseSize,1,1):cuda()
     noise:normal(0,1)
@@ -163,7 +165,10 @@ local fx = function(x)
 
     color=G.decoder.output[1]
     pred=G.decoder.output[2]
-    
+
+    color:cmul(occMask)
+    voxelsGt:cmul(occMask)
+ 
     err = lossFunc:forward(pred, voxelsOcc)
     err = err + params.lambda_l1*colLossFunc:forward(color,voxelsGt)
     local gradPred = lossFunc:backward(pred, voxelsOcc)
@@ -173,6 +178,8 @@ local fx = function(x)
     err = err + ganLossFunc:forward(output,label)
     local df_do= ganLossFunc:backward(output,label)
     gradColor = gradColor + netD:updateGradInput({color,imgs},df_do)[1]
+
+    -- gradColor:cmul(occMask)
 
     local d_decoder = G.decoder:backward({encoded,noise}, { gradColor , gradPred})
     G.encoder:backward(imgs,d_decoder[1])

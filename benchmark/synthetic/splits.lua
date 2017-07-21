@@ -27,7 +27,6 @@ local function getSplit(synset, saveDir, modelsDir)
     end
     local modelNames = BuildArray(paths.files(modelsDir,'...'))
     local nModels =  #modelNames
-    
     local randgen = torch.Generator()
     torch.manualSeed(randgen, 0)
     local rperm = torch.randperm(randgen, nModels)
