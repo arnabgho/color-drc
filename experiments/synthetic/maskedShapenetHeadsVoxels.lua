@@ -159,7 +159,7 @@ for iter=1,params.numTrainIter do
     fout:write(string.format('%d %f\n',iter,err))
     fout:flush()
     if(iter%params.visIter==0) then
-        local dispVar = pred:clone()
+        local dispVar = color:clone() --pred:clone()
         if(params.disp == 1) then
             disp.image(imgs, {win=10, title='inputIm'})
             disp.image(dispVar:max(3):squeeze(), {win=1, title='predX'})

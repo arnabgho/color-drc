@@ -22,7 +22,7 @@ params.gridSizeX = 32
 params.gridSizeY = 32
 params.gridSizeZ = 32
 
-params.lambda_l1 = 1
+params.lambda_l1 = 10
 
 params.matsave=1
 params.imsave = 0
@@ -179,7 +179,7 @@ local fx = function(x)
     local df_do= ganLossFunc:backward(output,label)
     gradColor = gradColor + netD:updateGradInput({color,imgs},df_do)[1]
 
-    -- gradColor:cmul(occMask)
+    gradColor:cmul(occMask)
 
     local d_decoder = G.decoder:backward({encoded,noise}, { gradColor , gradPred})
     G.encoder:backward(imgs,d_decoder[1])
@@ -230,7 +230,7 @@ for iter=1,params.numTrainIter do
     fout:write(string.format('%d %f\n',iter,err))
     fout:flush()
     if(iter%params.visIter==0) then
-        local dispVar = pred:clone()
+        local dispVar = color:clone()  --pred:clone()
         if(params.disp == 1) then
             disp.image(imgs, {win=10, title='inputIm'})
             disp.image(dispVar:max(3):squeeze(), {win=1, title='predX'})
