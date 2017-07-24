@@ -9,6 +9,12 @@ local classToSynset = {chair='3001627', aero='2691156', car='2958343'}
 local synset = classToSynset[params.class]
 
 
+-- ShapeNet Masked VAE Heads with Colored Voxels Experiment
+--local cmd = string.format('gpu=%d name=%s_maskedvaeheadsvoxels disp=%d synset=%s th synthetic/maskedVaeShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
+-- print(cmd)
+
+
+
 -- ShapeNet Masked Conditional Adversarial Heads with Colored Voxels Experiment
 local cmd = string.format('gpu=%d name=%s_maskedcondadvheadsvoxels disp=%d synset=%s th synthetic/maskedCondAdvShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
 -- print(cmd)

@@ -11,18 +11,18 @@ local splitUtil = dofile('../benchmark/synthetic/splits.lua')
 -----------------------------
 --------parameters-----------
 local gridBound = 0.5 --parameter fixed according to shapenet models' size
-local bgDepth = 10.0 --parameter fixed according to rendering used
+local bgDepth = 500.0 --TODO see if it should be 500 --parameter fixed according to rendering used
 
 local params = {}
 params.name = 'shapenet'
 params.gpu = 1
 params.useNoise = 0
 params.batchSize = 8
-params.nImgs = 5
+params.nImgs = 48 --TODO see if it can be set to a smaller number
 params.imgSizeY = 64
 params.imgSizeX = 64
 params.bgWt = 0.2 -- figured out via cross-validation on the val set
-params.synset = 2958343 --chair:3001627, aero:2691156, car:2958343
+params.synset = 3001627 --chair:3001627, aero:2691156, car:2958343
 
 params.gridSizeX = 32
 params.gridSizeY = 32
@@ -38,7 +38,7 @@ params.nConvEncLayers = 5
 params.nConvDecLayers = 4
 params.nConvEncChannelsInit = 8
 params.numTrainIter = 10000
-params.minDisp = 0.05
+params.minDisp = 0.002
 
 -- one-line argument parser. parses enviroment variables to override the defaults
 for k,v in pairs(params) do params[k] = tonumber(os.getenv(k)) or os.getenv(k) or params[k] end
@@ -56,8 +56,9 @@ params.imgSize = torch.Tensor({params.imgSizeX, params.imgSizeY})
 params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridSizeZ})
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
-params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
-assert(params.minDisp < 1/bgDepth) -- otherwise we won't sample layers that don't intersect CAD model and therefore have a bad estimate of free space
+--params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
+params.modelsDataDir = '../../' .. params.synset .. '/'
+assert(params.minDisp <= 1/bgDepth) -- otherwise we won't sample layers that don't intersect CAD model and therefore have a bad estimate of free space
 print(params)
 -----------------------------
 -----------------------------
