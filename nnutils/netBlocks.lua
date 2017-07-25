@@ -232,6 +232,61 @@ function M.ConditionalDiscriminator(nInputChannels,ndf,useBn)
    return netD
 end
 
+function M.ImageOccupancyEncoder(nInputChannels2D,nInputChannels3D,ndf, bottleneckSize , useBn)
+   local useBn = useBn ~= false and true
+   local ndf = ndf or 8
+
+   local netD=nn.Sequential()
+   local net3D = nn.Sequential()
+   --input is (nInputChannels) x 32 x 32 x 32
+   net3D:add(nn.VolumetricConvolution(nInputChannels3D, ndf, 4, 4, 4, 2, 2, 2, 1, 1, 1))
+   net3D:add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf) x 16 x 16 x 16
+   net3D:add(nn.VolumetricConvolution(ndf, ndf * 2, 4, 4, 4 , 2, 2, 2 ,1 , 1, 1))
+   net3D:add(nn.VolumetricBatchNormalization(ndf * 2)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*2) x 8 x 8 x 8
+   net3D:add(nn.VolumetricConvolution(ndf * 2, ndf * 4, 4, 4, 4, 2, 2, 2,1, 1, 1))
+   net3D:add(nn.VolumetricBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*4) x 4 x 4 x 4
+   net3D:add(nn.Reshape( ndf*4*4*4*4))
+
+   local net2D = nn.Sequential()
+   --input is (nInputChannels) x 64 x 64
+   net2D:add(nn.SpatialConvolution(nInputChannels2D, ndf, 4, 4,  2, 2,  1, 1))
+   net2D:add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf) x 32 x 32 
+   net2D:add(nn.SpatialConvolution(ndf, ndf * 2, 4, 4 , 2,  2 ,1 ,  1))
+   net2D:add(nn.SpatialBatchNormalization(ndf * 2)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*2) x 16 x 16 
+   net2D:add(nn.SpatialConvolution(ndf * 2, ndf * 4,  4, 4, 2, 2,1, 1))
+   net2D:add(nn.SpatialBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
+
+   -- state size: (ndf*4) x 8 x 8
+   net2D:add(nn.SpatialConvolution(ndf *4, ndf * 4,  4, 4, 2, 2,1, 1))
+   net2D:add(nn.SpatialBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
+ 
+   -- state size: (ndf*4) x 4 x 4
+   net2D:add(nn.Reshape(ndf*4*4*4))
+    
+   netD:add(nn.ParallelTable():add(net3D):add(net2D))
+   netD:add(nn.JoinTable(1,1))
+   netD:add(nn.Linear(ndf*4*4*4*5, ndf*4*4*4)) 
+   netD:add(nn.BatchNormalization(ndf*4*4*4)):add(nn.LeakyReLU(0.2,true))
+   
+   netD:add(nn.Linear(ndf*4*4*4, ndf*4*4)) 
+   netD:add(nn.BatchNormalization(ndf*4*4)):add(nn.LeakyReLU(0.2,true))
+
+   netD:add(nn.Linear(ndf*4*4, bottleneckSize)) 
+   netD:add(nn.BatchNormalization(bottleneckSize)):add(nn.LeakyReLU(0.2,true))
+
+   --netD:add(nn.Linear(ndf*4, 1))
+
+   --netD:add(nn.Sigmoid())
+
+   return netD
+end
+
+
 
 function M.VolumetricSoftMax(nC)
     -- input is B X C X H X W X D, output is also B X C X H X W X D but normalized across C

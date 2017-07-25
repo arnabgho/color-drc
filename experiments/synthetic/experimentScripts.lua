@@ -13,10 +13,14 @@ local synset = classToSynset[params.class]
 --local cmd = string.format('gpu=%d name=%s_maskedvaeheadsvoxels disp=%d synset=%s th synthetic/maskedVaeShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
 -- print(cmd)
 
+-- ShapeNet Masked Conditional Adversarial Occupancy to Colored Voxels with Colored Voxels Experiment
+local cmd = string.format('gpu=%d name=%s_occ2colormaskedcondadvheadsvoxels disp=%d synset=%s th synthetic/maskedCondAdvOccToColorShapenetVoxels.lua',params.gpu,params.class, params.disp, synset)
+-- print(cmd)
+
 
 
 -- ShapeNet Masked Conditional Adversarial Heads with Colored Voxels Experiment
-local cmd = string.format('gpu=%d name=%s_maskedcondadvheadsvoxels disp=%d synset=%s th synthetic/maskedCondAdvShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
+--local cmd = string.format('gpu=%d name=%s_maskedcondadvheadsvoxels disp=%d synset=%s th synthetic/maskedCondAdvShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset)
 -- print(cmd)
 
 
