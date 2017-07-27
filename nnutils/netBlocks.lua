@@ -287,6 +287,76 @@ function M.ImageOccupancyEncoder(nInputChannels2D,nInputChannels3D,ndf, bottlene
 end
 
 
+function M.2DImageGenerator(nz,nc,ngf)
+    local nz=nz or 100
+    local nc = nc or 3
+	local ngf=ngf or 64
+	local netG = nn.Sequential()
+	-- input is Z, going into a convolution
+	netG:add(nn.SpatialFullConvolution(nz, ngf * 8, 4, 4))
+	netG:add(nn.SpatialBatchNormalization(ngf * 8)):add(nn.ReLU(true))
+	-- state size: (ngf*8) x 4 x 4
+	netG:add(nn.SpatialFullConvolution(ngf * 8, ngf * 4, 4, 4, 2, 2, 1, 1))
+	netG:add(nn.SpatialBatchNormalization(ngf * 4)):add(nn.ReLU(true))
+	-- state size: (ngf*4) x 8 x 8
+	netG:add(nn.SpatialFullConvolution(ngf * 4, ngf * 2, 4, 4, 2, 2, 1, 1))
+	netG:add(nn.SpatialBatchNormalization(ngf * 2)):add(nn.ReLU(true))
+	-- state size: (ngf*2) x 16 x 16
+	netG:add(nn.SpatialFullConvolution(ngf * 2, ngf, 4, 4, 2, 2, 1, 1))
+	netG:add(nn.SpatialBatchNormalization(ngf)):add(nn.ReLU(true))
+	-- state size: (ngf) x 32 x 32
+	netG:add(nn.SpatialFullConvolution(ngf, nc, 4, 4, 2, 2, 1, 1))
+	netG:add(nn.Tanh())
+	-- state size: (nc) x 64 x 64
+	return G
+end
+
+function M.2DImageDiscriminator(nc,ndf)
+    local nc = nc or 3
+	local ndf = ndf or 64
+	local netD = nn.Sequential()
+	
+	-- input is (nc) x 64 x 64
+	netD:add(nn.SpatialConvolution(nc, ndf, 4, 4, 2, 2, 1, 1))
+	netD:add(nn.LeakyReLU(0.2, true))
+	-- state size: (ndf) x 32 x 32
+	netD:add(nn.SpatialConvolution(ndf, ndf * 2, 4, 4, 2, 2, 1, 1))
+	netD:add(nn.SpatialBatchNormalization(ndf * 2)):add(nn.LeakyReLU(0.2, true))
+	-- state size: (ndf*2) x 16 x 16
+	netD:add(nn.SpatialConvolution(ndf * 2, ndf * 4, 4, 4, 2, 2, 1, 1))
+	netD:add(nn.SpatialBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
+	-- state size: (ndf*4) x 8 x 8
+	netD:add(nn.SpatialConvolution(ndf * 4, ndf * 8, 4, 4, 2, 2, 1, 1))
+	netD:add(nn.SpatialBatchNormalization(ndf * 8)):add(nn.LeakyReLU(0.2, true))
+	-- state size: (ndf*8) x 4 x 4
+	netD:add(nn.SpatialConvolution(ndf * 8, 1, 4, 4))
+	netD:add(nn.Sigmoid())
+	-- state size: 1 x 1 x 1
+	netD:add(nn.View(1):setNumInputDims(3))
+	-- state size: 1
+	
+end
+
+function M.3DColorVoxelGridEncoder(nz,nc,ndf)
+    local nz=nz or 100
+    local nc=nc or 3
+    local ndf=ndf or 64
+
+	-- input is (nc) x 32 x 32 x 32
+	netD:add(nn.VolumetricConvolution(nc, ndf, 4, 4,4,2, 2, 2,1, 1, 1))
+	netD:add(nn.LeakyReLU(0.2, true))
+	-- state size: (ndf) x 16 x 16 x 16
+	netD:add(nn.VolumetricConvolution(ndf, ndf * 2, 4, 4,4,2, 2, 2,1, 1, 1))
+	netD:add(nn.VolumetricBatchNormalization(ndf * 2)):add(nn.LeakyReLU(0.2, true))
+	-- state size: (ndf*2) x 8 x 8 x 8
+	netD:add(nn.VolumetricConvolution(ndf * 2, ndf * 4, 4, 4,4,2, 2, 2,1, 1, 1))
+	netD:add(nn.VolumetricBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
+	-- state size: (ndf*4) x 4 x 4 x 4
+	netD:add(nn.VolumetricConvolution(ndf * 4, nz, 4, 4,4 , 4,2, 2, 2,1, 1, 1))
+	netD:add(nn.VolumetricBatchNormalization(nz)):add(nn.LeakyReLU(0.2, true))
+	-- state size: (nz)
+    netD:add(nn.Reshape(nz,1,1,true))
+end
 
 function M.VolumetricSoftMax(nC)
     -- input is B X C X H X W X D, output is also B X C X H X W X D but normalized across C

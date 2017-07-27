@@ -27,7 +27,7 @@ params.lambda_l1 = 1
 params.matsave=1
 params.imsave = 0
 params.disp = 0
-params.bottleneckSize = 400
+params.bottleneckSize = 100
 params.noiseSize = 1
 params.visIter = 100
 params.nConvEncLayers = 5
@@ -103,6 +103,17 @@ local netD=netBlocks.ConditionalDiscriminator(3,64,true)
 netD:apply(netInit.weightsInit)
 print(netD)
 -----------------------------
+--------- Encoder Decoder for 2D image generation
+
+local 3Dencoder = netBlocks.3DColorVoxelGridEncoder(params.bottleneckSize)
+local 2DGenerator = netBlocks.2DImageGenerator(params.bottleneckSize)
+G.3Dto2D = nn.Sequential()
+G.3Dto2D:add(3Dencoder):add(2DGenerator)
+G.3Dto2D:apply(netInit.weightsInit)
+
+local netD2D = netBlocks.2DImageDiscriminator()
+netD2D:apply(netInit.weightsInit)
+-----------------------------
 ----------Recons-------------
 local splitUtil = dofile('../benchmark/synthetic/splits.lua')
 local trainModels = splitUtil.getSplit(params.synset)['train']
@@ -112,6 +123,7 @@ local dataLoader = data.dataLoader(params.modelsDataDir, params.voxelsDir, param
 --netRecons = netRecons:cuda()
 for k,net in pairs(G) do net:cuda() end
 netD=netD:cuda()
+netD2D=netD2D:cuda()
 lossFunc = lossFunc:cuda()
 colLossFunc = colLossFunc:cuda()
 ganLossFunc = ganLossFunc:cuda()
@@ -119,6 +131,7 @@ ganLossFunc = ganLossFunc:cuda()
 --print(decoder)
 local err = 0
 local errD = 0
+local errD2D = 0
 -- Optimization parameters
 local optimState = {
    learningRate = 0.0001,
@@ -131,13 +144,12 @@ local optimStateD = {
 --local netParameters, netGradParameters = netRecons:getParameters()
 local netParameters, netGradParameters = model_utils.combine_all_parameters(G)
 local netDParameters, netDGradParameters = netD:getParameters()
+local netD2DParameters, netD2DGradParameters = netD2D:getParameters()
 local tm = torch.Timer()
 local data_tm = torch.Timer()
-local imgs, pred, rays
+local imgs, pred, rays ,fake_imgs 
 -- fX required for training
-local input=torch.Tensor(params.batchSize,3,params.gridSizeX,params.gridSizeY,params.gridSizeZ)
 local label = torch.Tensor(params.batchSize)
-input=input:cuda()
 label=label:cuda()
 local real_label=1
 local fake_label=0
@@ -161,8 +173,10 @@ local fx = function(x)
     voxelsGt = voxelsGt:cuda()
     voxelsOcc= voxelsOcc:cuda()
     occMask=occMask:cuda()
-    
-    local encoded=G.encoder:forward({ voxelsOcc , imgs})
+   
+    fake_imgs=G.3Dto2D:forward(voxelsGt)
+
+    local encoded=G.encoder:forward({ voxelsOcc , fake_imgs})
     local noise=torch.Tensor(params.batchSize,params.noiseSize,1,1):cuda()
     noise:normal(0,1)
     G.decoder:forward({encoded,noise})
@@ -177,15 +191,22 @@ local fx = function(x)
     --local gradPred = lossFunc:backward(pred, voxelsOcc):mul(params.lambda_l1)
     local gradColor = colLossFunc:backward(color,voxelsGt):mul(params.lambda_l1)
     label:fill(real_label)
-    local output=netD:forward({  color , imgs })
+    local output=netD:forward({  color , fake_imgs })
     err = err + ganLossFunc:forward(output,label)
     local df_do= ganLossFunc:backward(output,label)
-    gradColor = netD:updateGradInput({color,imgs},df_do)[1] + gradColor -- trying just adversarial loss
+    gradColor = netD:updateGradInput({color,fake_imgs},df_do)[1] + gradColor -- trying just adversarial loss
 
     gradColor:cmul(occMask)
 
     local d_decoder = G.decoder:backward({encoded,noise}, gradColor )
-    G.encoder:backward({ voxelsOcc , imgs},d_decoder[1])
+    
+    local _,d_imgs= table.unpack(G.encoder:backward({ voxelsOcc , fake_imgs},d_decoder[1]))
+    G.3Dto2D:backward( fake_imgs , d_imgs)
+    local output=netD2D:forward(fake_imgs)
+    err=err+ganLossFunc:forward(output,label)
+    local df_do=ganLossFunc:backward(output,label)
+    local d_imgs=netD2D:updateGradInput(fake_imgs,df_do)
+    G.3Dto2D:backward(fake_imgs,d_imgs)
     tm:stop()
     return err, netGradParameters
 end
@@ -193,24 +214,56 @@ end
 local fDx = function(x)
     netDGradParameters:zero()
 
-    -- train with real colored voxels
-    input:copy(voxelsGt)
+    -- train with real colored voxels and real images
     label:fill(real_label)
-    local output=netD:forward({input,imgs})
+    local output=netD:forward({voxelsGt,imgs})
     local errD_real=ganLossFunc:forward(output,label)
     local df_do = ganLossFunc:backward(output,label)
-    netD:backward({input,imgs},df_do)
+    netD:backward({voxelsGt,imgs},df_do)
 
-    -- train with generated colored voxels
-    input:copy(color)
+    -- train with generated colored voxels and real images
     label:fill(fake_label)
-    local output=netD:forward({input,imgs})
+    local output=netD:forward({color,imgs})
     local errD_fake=ganLossFunc:forward(output,label)
     local df_do = ganLossFunc:backward(output,label)
-    netD:backward({input,imgs},df_do)
-    
+    netD:backward({color,imgs},df_do)
+
+    -- train with generated colored voxels and fake images
+    label:fill(fake_label)
+    local output=netD:forward({color,fake_imgs})
+    errD_fake=errD_fake + ganLossFunc:forward(output,label)
+    local df_do = ganLossFunc:backward(output,label)
+    netD:backward({color,fake_imgs},df_do)
+
+    -- train with real colored voxels and fake images
+    label:fill(fake_label)
+    local output=netD:forward({voxelsGt,fake_imgs})
+    errD_fake=errD_fake + ganLossFunc:forward(output,label)
+    local df_do = ganLossFunc:backward(output,label)
+    netD:backward({voxelsGt,fake_imgs},df_do)
+
     errD= errD_real + errD_fake
     return errD, netDGradParameters
+end
+
+local fD2Dx = function(x)
+    netD2DGradParameters:zero()
+    -- train with real images
+    label:fill(real_label)
+    local output=netD2D:forward(imgs)
+    local errD2D_real=ganLossFunc:forward(output,label)
+    local df_do=ganLossFunc:backward(output,label)
+    netD2D:backward(imgs,df_do)
+
+    -- train with fake images
+    label:fill(fake_label)
+    local output=netD2D:forward(fake_imgs)
+    local errD2D_fake=ganLossFunc:forward(output,label)
+    local df_do=ganLossFunc:backward(output,label)
+    netD2D:backward(fake_imgs,df_do)
+
+    errD2D=erD2D_real+errD2D_fake
+    return err,netD2DGradParameters
 end
 
 --print(netRecons)
@@ -224,11 +277,11 @@ local forwIter = 0
 for iter=1,params.numTrainIter do
    
     print(('Epoch: [%d][%8d / %8d]\t Time: %.3f  DataTime: %.3f  '
-        .. '  Err_G: %.4f  Err_D: %.4f'):format(
+        .. '  Err_G: %.4f  Err_D: %.4f Err_D2D: %.4f'):format(
         iter, ((iter-1) / params.batchSize),
         math.floor( params.numTrainIter / params.batchSize),
         tm:time().real, data_tm:time().real,
-        err and err or -1, errD and errD or -1))
+        err and err or -1, errD and errD or -1,errD2D and errD2D or -1))
     --print(('Data/Total time : %f/%f'):format(data_tm:time().real,tm:time().real))
     fout:write(string.format('%d %f\n',iter,err))
     fout:flush()
@@ -236,6 +289,7 @@ for iter=1,params.numTrainIter do
         local dispVar = color:clone()  --pred:clone()
         if(params.disp == 1) then
             disp.image(imgs, {win=10, title='inputIm'})
+            disp.image(fake_imgs,{win=4,title='fakeIm'})
             disp.image(dispVar:max(3):squeeze(), {win=1, title='predX'})
             disp.image(dispVar:max(4):squeeze(), {win=2, title='predY'})
             disp.image(dispVar:max(5):squeeze(), {win=3, title='predZ'})
@@ -263,7 +317,9 @@ for iter=1,params.numTrainIter do
     if(iter%5000)==0 then
         torch.save(params.snapshotDir .. '/iter'.. iter .. '_netG.t7', {G=G})
         torch.save(params.snapshotDir .. '/iter'.. iter .. '_NetD.t7', netD)
+        torch.save(params.snapshotDir .. '/iter'.. iter .. '_NetD2D.t7', netD2D)
     end
     optim.adam(fx, netParameters, optimState)
     optim.adam(fDx,netDParameters,optimStateD)
+    optim.adam(fD2Dx,netD2DParameters,optimStateD)
 end
