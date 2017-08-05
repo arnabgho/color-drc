@@ -105,13 +105,14 @@ print(netD)
 -----------------------------
 --------- Encoder Decoder for 2D image generation
 
-local 3Dencoder = netBlocks.3DColorVoxelGridEncoder(params.bottleneckSize)
-local 2DGenerator = netBlocks.2DImageGenerator(params.bottleneckSize)
-G.3Dto2D = nn.Sequential()
-G.3Dto2D:add(3Dencoder):add(2DGenerator)
-G.3Dto2D:apply(netInit.weightsInit)
+local ThreeDencoder = netBlocks.ThreeDColorVoxelGridEncoder(params.bottleneckSize)
+local TwoDGenerator = netBlocks.TwoDImageGenerator(params.bottleneckSize)
+G.ThreeDto2D = nn.Sequential()
+G.ThreeDto2D:add(ThreeDencoder)
+G.ThreeDto2D:add(TwoDGenerator)
+G.ThreeDto2D:apply(netInit.weightsInit)
 
-local netD2D = netBlocks.2DImageDiscriminator()
+local netD2D = netBlocks.TwoDImageDiscriminator()
 netD2D:apply(netInit.weightsInit)
 -----------------------------
 ----------Recons-------------
@@ -141,13 +142,18 @@ local optimStateD = {
    learningRate = 0.0001,
    beta1 = 0.9,
 }
+local optimStateD2D = {
+   learningRate = 0.0001,
+   beta1 = 0.9,
+}
+
 --local netParameters, netGradParameters = netRecons:getParameters()
 local netParameters, netGradParameters = model_utils.combine_all_parameters(G)
 local netDParameters, netDGradParameters = netD:getParameters()
 local netD2DParameters, netD2DGradParameters = netD2D:getParameters()
 local tm = torch.Timer()
 local data_tm = torch.Timer()
-local imgs, pred, rays ,fake_imgs 
+local imgs, pred, rays ,fake_imgs , orig_imgs
 -- fX required for training
 local label = torch.Tensor(params.batchSize)
 label=label:cuda()
@@ -157,7 +163,7 @@ local fx = function(x)
     tm:reset(); tm:resume()
     netGradParameters:zero()
     data_tm:reset(); data_tm:resume()
-    imgs, voxelsGt = dataLoader:forward()
+    orig_imgs, voxelsGt = dataLoader:forward()
     data_tm:stop()
     --print('Data loaded')
     local voxelsOcc=torch.sum(voxelsGt,2)
@@ -168,13 +174,21 @@ local fx = function(x)
     end)
 
     local occMask=torch.repeatTensor(voxelsOcc,1,3,1,1,1)
-
+   
+       
+    voxelsGt:cmul(occMask)
+    local temp_imgs=voxelsGt:max(5):squeeze()
+    imgs=orig_imgs
+    for i=1,params.batchSize do
+        imgs[i]=image.scale( temp_imgs[i] , params.imgSizeX , params.imgSizeY  )
+    end
     imgs = imgs:cuda()
     voxelsGt = voxelsGt:cuda()
     voxelsOcc= voxelsOcc:cuda()
     occMask=occMask:cuda()
-   
-    fake_imgs=G.3Dto2D:forward(voxelsGt)
+
+    
+    fake_imgs=G.ThreeDto2D:forward(voxelsGt)
 
     local encoded=G.encoder:forward({ voxelsOcc , fake_imgs})
     local noise=torch.Tensor(params.batchSize,params.noiseSize,1,1):cuda()
@@ -184,7 +198,6 @@ local fx = function(x)
     color=G.decoder.output
 
     color:cmul(occMask)
-    voxelsGt:cmul(occMask)
  
     --err = lossFunc:forward(pred, voxelsOcc)
     err =params.lambda_l1*colLossFunc:forward(color,voxelsGt)
@@ -201,12 +214,15 @@ local fx = function(x)
     local d_decoder = G.decoder:backward({encoded,noise}, gradColor )
     
     local _,d_imgs= table.unpack(G.encoder:backward({ voxelsOcc , fake_imgs},d_decoder[1]))
-    G.3Dto2D:backward( fake_imgs , d_imgs)
+    G.ThreeDto2D:backward( voxelsGt , d_imgs)
     local output=netD2D:forward(fake_imgs)
     err=err+ganLossFunc:forward(output,label)
     local df_do=ganLossFunc:backward(output,label)
     local d_imgs=netD2D:updateGradInput(fake_imgs,df_do)
-    G.3Dto2D:backward(fake_imgs,d_imgs)
+    G.ThreeDto2D:backward(voxelsGt,d_imgs)
+    err = err+ params.lambda_l1*colLossFunc:forward( fake_imgs, imgs)
+    local gradColor=colLossFunc:backward(imgs,fake_imgs)
+    G.ThreeDto2D:backward(voxelsGt,gradColor)
     tm:stop()
     return err, netGradParameters
 end
@@ -262,7 +278,7 @@ local fD2Dx = function(x)
     local df_do=ganLossFunc:backward(output,label)
     netD2D:backward(fake_imgs,df_do)
 
-    errD2D=erD2D_real+errD2D_fake
+    errD2D=errD2D_real+errD2D_fake
     return err,netD2DGradParameters
 end
 
@@ -288,7 +304,7 @@ for iter=1,params.numTrainIter do
     if(iter%params.visIter==0) then
         local dispVar = color:clone()  --pred:clone()
         if(params.disp == 1) then
-            disp.image(imgs, {win=10, title='inputIm'})
+            disp.image(orig_imgs, {win=10, title='inputIm'})
             disp.image(fake_imgs,{win=4,title='fakeIm'})
             disp.image(dispVar:max(3):squeeze(), {win=1, title='predX'})
             disp.image(dispVar:max(4):squeeze(), {win=2, title='predY'})
@@ -321,5 +337,5 @@ for iter=1,params.numTrainIter do
     end
     optim.adam(fx, netParameters, optimState)
     optim.adam(fDx,netDParameters,optimStateD)
-    optim.adam(fD2Dx,netD2DParameters,optimStateD)
+    optim.adam(fD2Dx,netD2DParameters,optimStateD2D)
 end

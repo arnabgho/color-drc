@@ -32,6 +32,8 @@ function dataLoader.new(imgsDir, voxelsDir, bs, imgSize, voxelSize, modelNames)
     self.voxelSize = voxelSize
     self.voxelsDir = voxelsDir
     self.modelNames = modelNames
+    self.gen=torch.Generator()
+    torch.manualSeed(self.gen, 0)
     return self
 end
 
@@ -39,12 +41,12 @@ function dataLoader:forward()
     local imgs = torch.Tensor(self.bs, 3, self.imgSize[1], self.imgSize[2]):fill(0)
     local voxels = torch.Tensor(self.bs, 3, self.voxelSize[1], self.voxelSize[2], self.voxelSize[3]):fill(0)
     for b = 1,self.bs do
-        local mId = torch.random(1,#self.modelNames)
+        local mId = torch.random( self.gen, 1,#self.modelNames)
         local imgsDir = paths.concat(self.imgsDir, self.modelNames[mId]) 
         --local nImgs = #BuildArray(paths.files(imgsDir,'.mat'))
         --local inpImgNum = torch.random(0,nImgs-1)
         local imgAzimuthal = {'015', '030', '045', '060', '075', '090', '105', '120', '135', '150', '165', '180', '195', '210', '225', '240', '255', '270', '285', '300', '315', '330', '345', '360'}
-        local inpImgNum = torch.random(1,#imgAzimuthal)
+        local inpImgNum = torch.random(self.gen,1,#imgAzimuthal)
         local imgRgb = image.load(string.format('%s/imgs/a%s_e030.jpg',imgsDir,imgAzimuthal[inpImgNum]))  --TODO try masks instead of imgs
         --local imgRgb = image.load(string.format('%s/render_%d.png',imgsDir,inpImgNum))
         if(self.bGImgsList) then

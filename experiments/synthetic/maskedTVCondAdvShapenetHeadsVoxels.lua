@@ -7,6 +7,7 @@ local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
 local model_utils = dofile('../utils/model_utils.lua')
+local tv=dofile('../nnutils/TotalVariation.lua')
 -----------------------------
 --------parameters-----------
 local params = {}
@@ -23,7 +24,7 @@ params.gridSizeY = 32
 params.gridSizeZ = 32
 
 params.lambda_l1 = 1
-
+params.lambda_tv=1e-6
 params.matsave=1
 params.imsave = 0
 params.disp = 0
@@ -93,8 +94,8 @@ local parallel_inputs=nn.ParallelTable():add(nn.Identity()):add(nn.Identity())
 G.decoder:add(parallel_inputs)
 G.decoder:add(nn.JoinTable(1,3))
 G.decoder:add(nn.SpatialConvolution(params.bottleneckSize + params.noiseSize,nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3],1,1,1)):add(nn.SpatialBatchNormalization(nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3])):add(nn.ReLU(true)):add(nn.Reshape(nOutChannels,featSpSize[1],featSpSize[2],featSpSize[3],true))
-G.decoder:add(netBlocks.convDecoderSimple3dHeads(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,params.nVoxelChannels,params.nOccChannels,true))
-G.decoder:apply(netInit.weightsInit)
+G.decoder:add(netBlocks.convDecoderSimple3dHeads(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,params.nVoxelChannels,params.nOccChannels,true,true,true,1e-6))
+.decoder:apply(netInit.weightsInit)
 
 local netD=netBlocks.ConditionalDiscriminator(3,64,true)
 print(netD)
@@ -151,11 +152,13 @@ local fx = function(x)
       end 
     end)
 
+    local occMask=torch.repeatTensor(voxelsOcc,1,3,1,1,1)
 
     imgs = imgs:cuda()
     voxelsGt = voxelsGt:cuda()
     voxelsOcc= voxelsOcc:cuda()
-
+    occMask=occMask:cuda()
+    
     local encoded=G.encoder:forward(imgs)
     local noise=torch.Tensor(params.batchSize,params.noiseSize,1,1):cuda()
     noise:normal(0,1)
@@ -163,16 +166,21 @@ local fx = function(x)
 
     color=G.decoder.output[1]
     pred=G.decoder.output[2]
-    
+
+    color:cmul(occMask)
+    voxelsGt:cmul(occMask)
+ 
     err = lossFunc:forward(pred, voxelsOcc)
     err = err + params.lambda_l1*colLossFunc:forward(color,voxelsGt)
-    local gradPred = lossFunc:backward(pred, voxelsOcc)
+    local gradPred = lossFunc:backward(pred, voxelsOcc):mul(params.lambda_l1)
     local gradColor = colLossFunc:backward(color,voxelsGt):mul(params.lambda_l1)
     label:fill(real_label)
     local output=netD:forward({  color , imgs })
     err = err + ganLossFunc:forward(output,label)
     local df_do= ganLossFunc:backward(output,label)
-    gradColor = gradColor + netD:updateGradInput({color,imgs},df_do)[1]
+    gradColor = netD:updateGradInput({color,imgs},df_do)[1] -- + gradColor -- trying just adversarial loss
+
+    gradColor:cmul(occMask)
 
     local d_decoder = G.decoder:backward({encoded,noise}, { gradColor , gradPred})
     G.encoder:backward(imgs,d_decoder[1])
@@ -223,7 +231,7 @@ for iter=1,params.numTrainIter do
     fout:write(string.format('%d %f\n',iter,err))
     fout:flush()
     if(iter%params.visIter==0) then
-        local dispVar = pred:clone()
+        local dispVar = color:clone()  --pred:clone()
         if(params.disp == 1) then
             disp.image(imgs, {win=10, title='inputIm'})
             disp.image(dispVar:max(3):squeeze(), {win=1, title='predX'})

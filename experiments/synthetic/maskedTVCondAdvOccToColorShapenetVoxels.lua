@@ -7,6 +7,7 @@ local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
 local model_utils = dofile('../utils/model_utils.lua')
+local tv=dofile('../nnutils/TotalVariation.lua')
 -----------------------------
 --------parameters-----------
 local params = {}
@@ -23,7 +24,7 @@ params.gridSizeY = 32
 params.gridSizeZ = 32
 
 params.lambda_l1 = 1
-
+params.lambda_tv=1e-6
 params.matsave=1
 params.imsave = 0
 params.disp = 0
@@ -66,23 +67,26 @@ fout:flush()
 -----------------------------
 ----------LossComp-----------
 local lossFunc = nn.BCECriterion()
---local colLossFunc = nn.AbsCriterion()           
-local colLossFunc=nn.MSECriterion()
+local colLossFunc = nn.AbsCriterion()           
+--local colLossFunc=nn.MSECriterion()
 local ganLossFunc = nn.BCECriterion()
 -----------------------------
 ----------Encoder-----------
 local G={}
-local nOutChannels=nil
-G.encoder, nOutChannels = netBlocks.convEncoderSimple2d(params.nConvEncLayers,params.nConvEncChannelsInit,3,true) --output is nConvEncChannelsInit*pow(2,nConvEncLayers-1) X imgSize/pow(2,nConvEncLayers)
+local nOutChannels=3
+--G.encoder, nOutChannels = netBlocks.convEncoderSimple2d(params.nConvEncLayers,params.nConvEncChannelsInit,3,true) --output is nConvEncChannelsInit*pow(2,nConvEncLayers-1) X imgSize/pow(2,nConvEncLayers)
 local featSpSize = params.imgSize/torch.pow(2,params.nConvEncLayers)
---print(featSpSize)
-local bottleneck = nn.Sequential():add(nn.Reshape(nOutChannels*featSpSize[1]*featSpSize[2],1,1,true))
-local nInputCh = nOutChannels*featSpSize[1]*featSpSize[2]
-for nLayers=1,2 do --fc for joint reasoning
-    bottleneck:add(nn.SpatialConvolution(nInputCh,params.bottleneckSize,1,1)):add(nn.SpatialBatchNormalization(params.bottleneckSize)):add(nn.LeakyReLU(0.2, true))
-    nInputCh = params.bottleneckSize
-end
-G.encoder:add(bottleneck)
+----print(featSpSize)
+--local bottleneck = nn.Sequential():add(nn.Reshape(nOutChannels*featSpSize[1]*featSpSize[2],1,1,true))
+--local nInputCh = nOutChannels*featSpSize[1]*featSpSize[2]
+--for nLayers=1,2 do --fc for joint reasoning
+--    bottleneck:add(nn.SpatialConvolution(nInputCh,params.bottleneckSize,1,1)):add(nn.SpatialBatchNormalization(params.bottleneckSize)):add(nn.LeakyReLU(0.2, true))
+--    nInputCh = params.bottleneckSize
+--end
+--G.encoder:add(bottleneck)
+--
+G.encoder = netBlocks.ImageOccupancyEncoder(3,1,64,params.bottleneckSize,true)
+G.encoder:add(nn.Reshape(params.bottleneckSize,1,1,true))
 G.encoder:apply(netInit.weightsInit)
 --print(G.encoder)
 ---------------------------------
@@ -93,10 +97,13 @@ local parallel_inputs=nn.ParallelTable():add(nn.Identity()):add(nn.Identity())
 G.decoder:add(parallel_inputs)
 G.decoder:add(nn.JoinTable(1,3))
 G.decoder:add(nn.SpatialConvolution(params.bottleneckSize + params.noiseSize,nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3],1,1,1)):add(nn.SpatialBatchNormalization(nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3])):add(nn.ReLU(true)):add(nn.Reshape(nOutChannels,featSpSize[1],featSpSize[2],featSpSize[3],true))
-G.decoder:add(netBlocks.convDecoderSimple3dHeads(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,params.nVoxelChannels,params.nOccChannels,true))
+G.decoder:add(netBlocks.convDecoderSimple3d(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,params.nVoxelChannels,true))
+local tv_mod=nn.TotalVariation(params.lambda_tv):cuda()
+G.decoder:add(tv_mod)
 G.decoder:apply(netInit.weightsInit)
 
 local netD=netBlocks.ConditionalDiscriminator(3,64,true)
+netD:apply(netInit.weightsInit)
 print(netD)
 -----------------------------
 ----------Recons-------------
@@ -151,31 +158,37 @@ local fx = function(x)
       end 
     end)
 
+    local occMask=torch.repeatTensor(voxelsOcc,1,3,1,1,1)
 
     imgs = imgs:cuda()
     voxelsGt = voxelsGt:cuda()
     voxelsOcc= voxelsOcc:cuda()
-
-    local encoded=G.encoder:forward(imgs)
+    occMask=occMask:cuda()
+    
+    local encoded=G.encoder:forward({ voxelsOcc , imgs})
     local noise=torch.Tensor(params.batchSize,params.noiseSize,1,1):cuda()
     noise:normal(0,1)
     G.decoder:forward({encoded,noise})
 
-    color=G.decoder.output[1]
-    pred=G.decoder.output[2]
-    
-    err = lossFunc:forward(pred, voxelsOcc)
-    err = err + params.lambda_l1*colLossFunc:forward(color,voxelsGt)
-    local gradPred = lossFunc:backward(pred, voxelsOcc)
+    color=G.decoder.output
+
+    color:cmul(occMask)
+    voxelsGt:cmul(occMask)
+ 
+    --err = lossFunc:forward(pred, voxelsOcc)
+    err =params.lambda_l1*colLossFunc:forward(color,voxelsGt)
+    --local gradPred = lossFunc:backward(pred, voxelsOcc):mul(params.lambda_l1)
     local gradColor = colLossFunc:backward(color,voxelsGt):mul(params.lambda_l1)
     label:fill(real_label)
     local output=netD:forward({  color , imgs })
     err = err + ganLossFunc:forward(output,label)
     local df_do= ganLossFunc:backward(output,label)
-    gradColor = gradColor + netD:updateGradInput({color,imgs},df_do)[1]
+    gradColor = netD:updateGradInput({color,imgs},df_do)[1] + gradColor -- trying just adversarial loss
 
-    local d_decoder = G.decoder:backward({encoded,noise}, { gradColor , gradPred})
-    G.encoder:backward(imgs,d_decoder[1])
+    gradColor:cmul(occMask)
+
+    local d_decoder = G.decoder:backward({encoded,noise}, gradColor )
+    G.encoder:backward({ voxelsOcc , imgs},d_decoder[1])
     tm:stop()
     return err, netGradParameters
 end
@@ -223,7 +236,7 @@ for iter=1,params.numTrainIter do
     fout:write(string.format('%d %f\n',iter,err))
     fout:flush()
     if(iter%params.visIter==0) then
-        local dispVar = pred:clone()
+        local dispVar = color:clone()  --pred:clone()
         if(params.disp == 1) then
             disp.image(imgs, {win=10, title='inputIm'})
             disp.image(dispVar:max(3):squeeze(), {win=1, title='predX'})
@@ -246,7 +259,7 @@ for iter=1,params.numTrainIter do
             for i =1,params.batchSize do
                 matio.save(vox_dir .. string.format('/gt_%03d.mat',i),voxelsGt[i]:float())
                 matio.save(vox_dir ..  string.format('/pred_%03d.mat',i),color[i]:float())
-                matio.save(vox_dir ..  string.format('/pred_occ%03d.mat',i),pred[i]:float())
+                --matio.save(vox_dir ..  string.format('/pred_occ%03d.mat',i),pred[i]:float())
             end
         end
     end

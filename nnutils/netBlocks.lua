@@ -1,7 +1,7 @@
 require 'nn'
 require 'nngraph'
 local M = {}
-
+local tv=dofile('../nnutils/TotalVariation.lua')
 function M.convEncoderSimple1d(nLayers, nChannelsInit, nInputChannels, useBn)
     local nInputChannels = nInputChannels or 3
     local nChannelsInit = nChannelsInit or 8
@@ -59,6 +59,34 @@ function M.convEncoderComplex2d(nLayers, nChannelsInit, nInputChannels, useBn)
     end
     return encoder, nOutputChannels/2 -- division by two offsets the mutiplication in last iteration
 end
+
+function M.convEncoderSimple3d(nInputChannels,ndf, bottleneckSize, useBn)
+   local netD = nn.Sequential()
+   local useBn = useBn ~= false and true
+   local ndf = ndf or 8
+   local bottleneckSize = bottleneckSize or 100
+
+   --input is (nInputChannels) x 32 x 32 x 32
+   netD:add(nn.VolumetricConvolution(nInputChannels, ndf, 4, 4, 4, 2, 2, 2, 1, 1, 1))
+   netD:add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf) x 16 x 16 x 16
+   netD:add(nn.VolumetricConvolution(ndf, ndf * 2, 4, 4, 4 , 2, 2, 2 ,1 , 1, 1))
+   netD:add(nn.VolumetricBatchNormalization(ndf * 2)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*2) x 8 x 8 x 8
+   netD:add(nn.VolumetricConvolution(ndf * 2, ndf * 4, 4, 4, 4, 2, 2, 2,1, 1, 1))
+   netD:add(nn.VolumetricBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*4) x 4 x 4 x 4
+   --netD:add(VolumetricConvolution(ndf * 4, ndf * 8, 4, 4, 4, 2, 2,2,1, 1,1))
+   --netD:add(SpatialBatchNormalization(ndf * 8)):add(nn.LeakyReLU(0.2, true))
+   -- state size: (ndf*8) x 2 x 2
+   netD:add(nn.VolumetricConvolution(ndf * 4, bottleneckSize , 4, 4 , 4))
+   netD:add(nn.LeakyReLU(0.2,true))
+   -- state size: 1 x 1 x 1
+   --netD:add(nn.View(1):setNumInputDims(3))
+   -- state size: 1
+   return netD
+end
+
 
 function M.convDecoderSimple2d(nLayers, nInputChannels, ndf, nFinalChannels, useBn)
     --adds nLayers deconv layers + 1 conv layer
@@ -124,7 +152,7 @@ function M.convDecoderSimple3d(nLayers, nInputChannels, ndf, nFinalChannels, use
     return decoder
 end
 
-function M.convDecoderSimple3dHeads(nLayers, nInputChannels, ndf, nFinalChannels1, nFinalChannels2, useBn, normalizeOut)
+function M.convDecoderSimple3dHeads(nLayers, nInputChannels, ndf, nFinalChannels1, nFinalChannels2, useBn, normalizeOut,useTV,lambda_tv)
     --adds nLayers deconv layers + 1 conv layer
     local nFinalChannels = nFinalChannels or 1
     local ndf = ndf or 8 --channels in penultimate layer
@@ -132,6 +160,8 @@ function M.convDecoderSimple3dHeads(nLayers, nInputChannels, ndf, nFinalChannels
     local normalizeOut = normalizeOut~=false and true
     local nOutputChannels = ndf*torch.pow(2,nLayers-1)
     local decoder = nn.Sequential()
+    local lambda_tv = lambda_tv or 1e-6
+    local useTV = useTV~=false and true
     for l=1,nLayers do
         decoder:add(nn.VolumetricFullConvolution(nInputChannels, nOutputChannels, 4, 4, 4, 2, 2, 2, 1, 1, 1))
         if useBn then decoder:add(nn.VolumetricBatchNormalization(nOutputChannels)) end
@@ -147,6 +177,10 @@ function M.convDecoderSimple3dHeads(nLayers, nInputChannels, ndf, nFinalChannels
     if(normalizeOut) then
         head1:add(nn.Tanh()):add(nn.AddConstant(1)):add(nn.MulConstant(0.5))
         head2:add(nn.Tanh()):add(nn.AddConstant(1)):add(nn.MulConstant(0.5))
+    end
+    if useTV then
+        local tv_mod=nn.TotalVariation(lambda_tv):cuda()
+        head2:add(tv_mod)
     end
     decoder:add(nn.ConcatTable():add(head1):add(head2))
     return decoder
@@ -287,7 +321,7 @@ function M.ImageOccupancyEncoder(nInputChannels2D,nInputChannels3D,ndf, bottlene
 end
 
 
-function M.2DImageGenerator(nz,nc,ngf)
+function M.TwoDImageGenerator(nz,nc,ngf)
     local nz=nz or 100
     local nc = nc or 3
 	local ngf=ngf or 64
@@ -308,10 +342,10 @@ function M.2DImageGenerator(nz,nc,ngf)
 	netG:add(nn.SpatialFullConvolution(ngf, nc, 4, 4, 2, 2, 1, 1))
 	netG:add(nn.Tanh())
 	-- state size: (nc) x 64 x 64
-	return G
+	return netG
 end
 
-function M.2DImageDiscriminator(nc,ndf)
+function M.TwoDImageDiscriminator(nc,ndf)
     local nc = nc or 3
 	local ndf = ndf or 64
 	local netD = nn.Sequential()
@@ -334,14 +368,15 @@ function M.2DImageDiscriminator(nc,ndf)
 	-- state size: 1 x 1 x 1
 	netD:add(nn.View(1):setNumInputDims(3))
 	-- state size: 1
-	
+    return netD	
 end
 
-function M.3DColorVoxelGridEncoder(nz,nc,ndf)
+function M.ThreeDColorVoxelGridEncoder(nz,nc,ndf)
     local nz=nz or 100
     local nc=nc or 3
     local ndf=ndf or 64
 
+    local netD= nn.Sequential()
 	-- input is (nc) x 32 x 32 x 32
 	netD:add(nn.VolumetricConvolution(nc, ndf, 4, 4,4,2, 2, 2,1, 1, 1))
 	netD:add(nn.LeakyReLU(0.2, true))
@@ -352,10 +387,11 @@ function M.3DColorVoxelGridEncoder(nz,nc,ndf)
 	netD:add(nn.VolumetricConvolution(ndf * 2, ndf * 4, 4, 4,4,2, 2, 2,1, 1, 1))
 	netD:add(nn.VolumetricBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
 	-- state size: (ndf*4) x 4 x 4 x 4
-	netD:add(nn.VolumetricConvolution(ndf * 4, nz, 4, 4,4 , 4,2, 2, 2,1, 1, 1))
+	netD:add(nn.VolumetricConvolution(ndf * 4, nz, 4, 4,4,4))
 	netD:add(nn.VolumetricBatchNormalization(nz)):add(nn.LeakyReLU(0.2, true))
 	-- state size: (nz)
     netD:add(nn.Reshape(nz,1,1,true))
+    return netD
 end
 
 function M.VolumetricSoftMax(nC)
