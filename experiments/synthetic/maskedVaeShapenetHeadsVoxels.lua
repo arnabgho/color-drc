@@ -2,7 +2,8 @@ torch.manualSeed(1)
 require 'cunn'
 require 'optim'
 matio=require 'matio'
-local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
+--local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
+local data = dofile('../data/synthetic/shapenetColorRenderedVoxels.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
@@ -25,7 +26,7 @@ params.gridSizeZ = 32
 params.matsave=1
 params.imsave = 0
 params.disp = 0
-params.bottleneckSize = 100
+params.bottleneckSize = 400
 params.visIter = 100
 params.nConvEncLayers = 5
 params.nConvDecLayers = 4
@@ -45,7 +46,8 @@ params.imgSize = torch.Tensor({params.imgSizeX, params.imgSizeY})
 params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridSizeZ})
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
-params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
+--params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
+params.modelsDataDir='/home/viveka/'..params.synset .. '/'
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
 params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
 params.voxelSaveDir= params.visDir .. '/vox'
@@ -63,8 +65,8 @@ fout:flush()
 -----------------------------
 ----------LossComp-----------
 local lossFunc = nn.BCECriterion()
-local colLossFunc = nn.MSECriterion()
---local colLossFunc = nn.AbsCriterion()
+--local colLossFunc = nn.MSECriterion()
+local colLossFunc = nn.AbsCriterion()
 -----------------------------
 ----------Encoder------------
 local encoder, nOutChannels = netBlocks.convEncoderSimple2d(params.nConvEncLayers,params.nConvEncChannelsInit,3,true) --output is nConvEncChannelsInit*pow(2,nConvEncLayers-1) X imgSize/pow(2,nConvEncLayers)

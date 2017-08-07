@@ -2,12 +2,13 @@ torch.manualSeed(1)
 require 'cunn'
 require 'optim'
 matio=require 'matio'
-local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
+--local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
+local data = dofile('../data/synthetic/shapenetColorRenderedVoxels.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
 local model_utils = dofile('../utils/model_utils.lua')
-local tv=dofile('../nnutils/TotalVariation.lua')
+--local tv=dofile('../nnutils/TotalVariation.lua')
 -----------------------------
 --------parameters-----------
 local params = {}
@@ -49,7 +50,8 @@ params.imgSize = torch.Tensor({params.imgSizeX, params.imgSizeY})
 params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridSizeZ})
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
-params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
+--params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
+local data = dofile('../data/synthetic/shapenetColorRenderedVoxels.lua')
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
 params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
 params.voxelSaveDir= params.visDir .. '/vox'
@@ -95,7 +97,7 @@ G.decoder:add(parallel_inputs)
 G.decoder:add(nn.JoinTable(1,3))
 G.decoder:add(nn.SpatialConvolution(params.bottleneckSize + params.noiseSize,nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3],1,1,1)):add(nn.SpatialBatchNormalization(nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3])):add(nn.ReLU(true)):add(nn.Reshape(nOutChannels,featSpSize[1],featSpSize[2],featSpSize[3],true))
 G.decoder:add(netBlocks.convDecoderSimple3dHeads(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,params.nVoxelChannels,params.nOccChannels,true,true,true,1e-6))
-.decoder:apply(netInit.weightsInit)
+G.decoder:apply(netInit.weightsInit)
 
 local netD=netBlocks.ConditionalDiscriminator(3,64,true)
 print(netD)

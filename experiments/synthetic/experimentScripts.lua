@@ -30,7 +30,7 @@ local synset = classToSynset[params.class]
 -- print(cmd)
 
 -- ShapeNet TV Loss Masked Conditional Adversarial Occupancy to Colored Voxels with Colored Voxels Experiment
---local cmd = string.format('gpu=%d name=%s_tvocc2colormaskedcondadvheadsvoxels disp=%d synset=%s imsave=%d th synthetic/maskedTVCondAdvOccToColorShapenetVoxels.lua',params.gpu,params.class, params.disp, synset,params.imsave)
+local cmd = string.format('gpu=%d name=%s_tvocc2colormaskedcondadvheadsvoxels disp=%d synset=%s imsave=%d th synthetic/maskedTVCondAdvOccToColorShapenetVoxels.lua',params.gpu,params.class, params.disp, synset,params.imsave)
 -- print(cmd)
 
 -- ShapeNet Masked Conditional Adversarial Occupancy to Colored Voxels with Colored Voxels Experiment
@@ -42,7 +42,7 @@ local synset = classToSynset[params.class]
 -- print(cmd)
 
 -- ShapeNet Masked Conditional Adversarial Heads with Colored Voxels Experiment
-local cmd = string.format('gpu=%d name=%s_maskedcondadvheadsvoxels disp=%d synset=%s imsave=%d th synthetic/maskedCondAdvShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset,params.imsave)
+--local cmd = string.format('gpu=%d name=%s_maskedcondadvheadsvoxels disp=%d synset=%s imsave=%d th synthetic/maskedCondAdvShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset,params.imsave)
 -- print(cmd)
 
 

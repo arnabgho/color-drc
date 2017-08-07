@@ -2,12 +2,13 @@ torch.manualSeed(1)
 require 'cunn'
 require 'optim'
 matio=require 'matio'
-local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
+--local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
+local data = dofile('../data/synthetic/shapenetColorRenderedVoxels.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
 local model_utils = dofile('../utils/model_utils.lua')
-local tv=dofile('../nnutils/TotalVariation.lua')
+--local tv=dofile('../nnutils/TotalVariation.lua')
 -----------------------------
 --------parameters-----------
 local params = {}
@@ -24,7 +25,7 @@ params.gridSizeY = 32
 params.gridSizeZ = 32
 
 params.lambda_l1 = 1
-params.lambda_tv=1e-6
+params.lambda_tv=1e-3
 params.matsave=1
 params.imsave = 0
 params.disp = 0
@@ -49,7 +50,8 @@ params.imgSize = torch.Tensor({params.imgSizeX, params.imgSizeY})
 params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridSizeZ})
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
-params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
+--params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
+params.modelsDataDir='/home/viveka/'..params.synset .. '/'
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
 params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
 params.voxelSaveDir= params.visDir .. '/vox'
@@ -67,8 +69,8 @@ fout:flush()
 -----------------------------
 ----------LossComp-----------
 local lossFunc = nn.BCECriterion()
-local colLossFunc = nn.AbsCriterion()           
---local colLossFunc=nn.MSECriterion()
+--local colLossFunc = nn.AbsCriterion()           
+local colLossFunc=nn.MSECriterion()
 local ganLossFunc = nn.BCECriterion()
 -----------------------------
 ----------Encoder-----------
