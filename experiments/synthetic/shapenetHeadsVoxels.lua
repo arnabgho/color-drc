@@ -89,11 +89,12 @@ decoder:apply(netInit.weightsInit)
 ----------Recons-------------
 local splitUtil = dofile('../benchmark/synthetic/splits.lua')
 local trainModels = splitUtil.getSplit(params.synset)['train']
-local trainModels = {trainModels[1]}
-print(trainModels)
+--local trainModels = {trainModels[1]}
+--print(trainModels)
 local dataLoader = data.dataLoader(params.modelsDataDir, params.voxelsDir, params.batchSize, params.imgSize, params.gridSize, trainModels)
 local netRecons = nn.Sequential():add(encoder):add(decoder)
 --local netRecons = torch.load(params.snapshotDir .. '/iter10000.t7')
+print(netRecons)
 netRecons = netRecons:cuda()
 lossFunc = lossFunc:cuda()
 colLossFunc = colLossFunc:cuda()

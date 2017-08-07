@@ -91,6 +91,8 @@ decoder:apply(netInit.weightsInit)
 ----------Recons-------------
 local splitUtil = dofile('../benchmark/synthetic/splits.lua')
 local trainModels = splitUtil.getSplit(params.synset)['train']
+local trainModels={trainModels[1]}
+print(trainModels)
 local dataLoader = data.dataLoader(params.modelsDataDir, params.voxelsDir, params.batchSize, params.imgSize, params.gridSize, trainModels)
 local netRecons = nn.Sequential():add(encoder):add(decoder)
 --local netRecons = torch.load(params.snapshotDir .. '/iter10000.t7')
@@ -119,12 +121,20 @@ local fx = function(x)
     data_tm:reset(); data_tm:resume()
     imgs, voxelsGt = dataLoader:forward()
     data_tm:stop()
+    uni=torch.Tensor(3)
+    uni:uniform(0,1)
     --print('Data loaded')
     local voxelsOcc=torch.sum(voxelsGt,2)
     voxelsOcc:apply( function(x) 
       if x>2.99 then return 0
       else return 1
       end 
+    end)
+
+    imgs:apply( function(x)
+        if x>0.99 then return 0
+        else return 1
+        end
     end)
     local occMask=torch.repeatTensor(voxelsOcc,1,3,1,1,1)
 
@@ -133,6 +143,12 @@ local fx = function(x)
     voxelsOcc= voxelsOcc:cuda()
     occMask=occMask:cuda()
 
+    voxelsGt=occMask
+   
+    for i=1,3 do
+        voxelsGt[ {{}, {i}}]:mul(uni[i])
+        imgs[{ {} , {i}  }]:mul(uni[i])
+    end
     netRecons:forward(imgs)
     color=netRecons.output[1]
     pred=netRecons.output[2]
