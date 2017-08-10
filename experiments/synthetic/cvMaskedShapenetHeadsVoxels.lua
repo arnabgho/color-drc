@@ -46,7 +46,7 @@ params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridS
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
 --params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
-params.modelsDataDir='/home/viveka/'..params.synset .. '/'
+params.modelsDataDir='/mnt/raid/viveka/data/'..params.synset .. '/'
 --params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
 params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
@@ -91,7 +91,7 @@ decoder:apply(netInit.weightsInit)
 ----------Recons-------------
 local splitUtil = dofile('../benchmark/synthetic/splits.lua')
 local trainModels = splitUtil.getSplit(params.synset)['train']
-local trainModels={trainModels[1]}
+--local trainModels={trainModels[1]}
 print(trainModels)
 local dataLoader = data.dataLoader(params.modelsDataDir, params.voxelsDir, params.batchSize, params.imgSize, params.gridSize, trainModels)
 local netRecons = nn.Sequential():add(encoder):add(decoder)

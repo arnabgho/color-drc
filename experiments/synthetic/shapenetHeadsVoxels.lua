@@ -13,7 +13,7 @@ local params = {}
 --params.bgVal = 0
 params.name = 'shapenetVoxels'
 params.gpu = 1
-params.batchSize = 8
+params.batchSize = 32
 params.imgSizeY = 64
 params.imgSizeX = 64
 params.synset = 2958343 --chair:3001627, aero:2691156, car:2958343
@@ -21,24 +21,25 @@ params.synset = 2958343 --chair:3001627, aero:2691156, car:2958343
 params.gridSizeX = 32
 params.gridSizeY = 32
 params.gridSizeZ = 32
-
+params.lambda=0.5
 params.matsave=1
 params.imsave = 0
 params.disp = 0
-params.bottleneckSize = 100
-params.visIter = 100
+params.bottleneckSize = 400
+params.visIter = 1000
 params.nConvEncLayers = 5
 params.nConvDecLayers = 4
 params.nConvEncChannelsInit = 8
 params.nVoxelChannels = 3
 params.nOccChannels = 1
-params.numTrainIter = 10000
+params.numTrainIter = 500000
 params.ip = '131.159.40.120'
 params.port = 8000
 -- one-line argument parser. parses enviroment variables to override the defaults
 for k,v in pairs(params) do params[k] = tonumber(os.getenv(k)) or os.getenv(k) or params[k] end
 if params.disp == 0 then params.display = false else params.display = true end
 if params.imsave == 0 then params.imsave = false end
+params.name = params.name .. tostring(params.lambda)
 params.visDir = '../cachedir/visualization/' .. params.name
 params.snapshotDir = '../cachedir/snapshots/shapenet/' .. params.name
 params.imgSize = torch.Tensor({params.imgSizeX, params.imgSizeY})
@@ -46,7 +47,7 @@ params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridS
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
 --params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
-params.modelsDataDir='/home/viveka/'..params.synset .. '/'
+params.modelsDataDir='/mnt/raid/viveka/data/'..params.synset .. '/'
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
 params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
 params.voxelSaveDir= params.visDir .. '/vox'
@@ -89,9 +90,11 @@ decoder:apply(netInit.weightsInit)
 ----------Recons-------------
 local splitUtil = dofile('../benchmark/synthetic/splits.lua')
 local trainModels = splitUtil.getSplit(params.synset)['train']
+local testModels = splitUtil.getSplit(params.synset)['test']
 --local trainModels = {trainModels[1]}
 --print(trainModels)
 local dataLoader = data.dataLoader(params.modelsDataDir, params.voxelsDir, params.batchSize, params.imgSize, params.gridSize, trainModels)
+local dataLoaderTest = data.dataLoader(params.modelsDataDir, params.voxelsDir, params.batchSize, params.imgSize, params.gridSize, testModels)
 local netRecons = nn.Sequential():add(encoder):add(decoder)
 --local netRecons = torch.load(params.snapshotDir .. '/iter10000.t7')
 print(netRecons)
@@ -135,14 +138,38 @@ local fx = function(x)
     netRecons:forward(imgs)
     color=netRecons.output[1]
     pred=netRecons.output[2]
-    err = lossFunc:forward(pred, voxelsOcc)
-    err = err + colLossFunc:forward(color,voxelsGt)
-    local gradPred = lossFunc:backward(pred, voxelsOcc)
-    local gradColor = colLossFunc:backward(color,voxelsGt)
+    err = (1-params.lambda)*lossFunc:forward(pred, voxelsOcc)
+    err = err + (params.lambda)*colLossFunc:forward(color,voxelsGt)
+    local gradPred = (1-params.lambda)*lossFunc:backward(pred, voxelsOcc)
+    local gradColor = (params.lambda)*colLossFunc:backward(color,voxelsGt)
     netRecons:backward(imgs, { gradColor , gradPred})
     tm:stop()
     return err, netGradParameters
 end
+
+
+local err_test=0
+function eval()
+    netRecons:evaluate()
+    imgs, voxelsGt = dataLoader:forward()
+    local voxelsOcc=torch.sum(voxelsGt,2)
+    voxelsOcc:apply( function(x) 
+      if x>2.99 then return 0
+      else return 1
+      end 
+    end)
+
+    imgs = imgs:cuda()
+    voxelsGt = voxelsGt:cuda()
+    voxelsOcc= voxelsOcc:cuda()
+    netRecons:forward(imgs)
+    color=netRecons.output[1]
+    pred=netRecons.output[2]
+    err_test = (1-params.lambda)*lossFunc:forward(pred, voxelsOcc)
+    err_test = err_test + params.lambda*colLossFunc:forward(color,voxelsGt)
+    return err_test 
+end
+
 --print(netRecons)
 -----------------------------
 ----------Training-----------
@@ -151,28 +178,57 @@ if(params.display) then
     disp.configure({hostname=params.ip, port=params.port})
 end
 local forwIter = 0
+train_err={}
+test_err={}
 for iter=1,params.numTrainIter do
     print(iter,err)
     --print(('Data/Total time : %f/%f'):format(data_tm:time().real,tm:time().real))
     fout:write(string.format('%d %f\n',iter,err))
+    table.insert(train_err,err)
     fout:flush()
     if(iter%params.visIter==0) then
-        local dispVar = pred:clone()
         if(params.disp == 1) then
-            disp.image(imgs, {win=10, title='inputIm'})
-            disp.image(dispVar:max(3):squeeze(), {win=1, title='predX'})
-            disp.image(dispVar:max(4):squeeze(), {win=2, title='predY'})
-            disp.image(dispVar:max(5):squeeze(), {win=3, title='predZ'})
+            disp.image(imgs, {win=1000, title='inputIm'})
+            disp.image(color:min(3):squeeze(), {win=1, title='predX'})
+            disp.image(color:min(4):squeeze(), {win=2, title='predY'})
+            disp.image(color:min(5):squeeze(), {win=3, title='predZ'})
             
-            disp.image(voxelsGt:max(3):squeeze(), {win=11, title='gtX'})
-            disp.image(voxelsGt:max(4):squeeze(), {win=12, title='gtY'})
-            disp.image(voxelsGt:max(5):squeeze(), {win=13, title='gtZ'})
+            disp.image(voxelsGt:min(3):squeeze(), {win=4, title='gtX'})
+            disp.image(voxelsGt:min(4):squeeze(), {win=5, title='gtY'})
+            disp.image(voxelsGt:min(5):squeeze(), {win=6, title='gtZ'})
+            
+            disp.image(pred:max(3):squeeze(), {win=7, title='occX'})
+            disp.image(pred:max(4):squeeze(), {win=8, title='occY'})
+            disp.image(pred:max(5):squeeze(), {win=9, title='occZ'})
+            
+            disp.plot(train_err,{win=10,title='Training Error'})
+           
+            table.insert(test_err,eval())
+
+            disp.image(imgs, {win=100, title='Test-inputIm'})
+            disp.image(color:min(3):squeeze(), {win=11, title='Test-predX'})
+            disp.image(color:min(4):squeeze(), {win=12, title='Test-predY'})
+            disp.image(color:min(5):squeeze(), {win=13, title='Test-predZ'})
+            
+            disp.image(voxelsGt:min(3):squeeze(), {win=14, title='Test-gtX'})
+            disp.image(voxelsGt:min(4):squeeze(), {win=15, title='Test-gtY'})
+            disp.image(voxelsGt:min(5):squeeze(), {win=16, title='Test-gtZ'})
+            
+            disp.image(pred:max(3):squeeze(), {win=17, title='Test-occX'})
+            disp.image(pred:max(4):squeeze(), {win=18, title='Test-occY'})
+            disp.image(pred:max(5):squeeze(), {win=19, title='Test-occZ'})
+            
+            disp.plot(test_err,{win=20,title='Test Error'})
         end
         if(params.imsave == 1) then
             vUtils.imsave(imgs, params.visDir .. '/inputIm'.. iter .. '.png')
-            vUtils.imsave(dispVar:max(3):squeeze(), params.visDir.. '/predX' .. iter .. '.png')
-            vUtils.imsave(dispVar:max(4):squeeze(), params.visDir.. '/predY' .. iter .. '.png')
-            vUtils.imsave(dispVar:max(5):squeeze(), params.visDir.. '/predZ' .. iter .. '.png')
+            vUtils.imsave(color:min(3):squeeze(), params.visDir.. '/predX' .. iter .. '.png')
+            vUtils.imsave(color:min(4):squeeze(), params.visDir.. '/predY' .. iter .. '.png')
+            vUtils.imsave(color:min(5):squeeze(), params.visDir.. '/predZ' .. iter .. '.png')
+
+            vUtils.imsave(pred:max(3):squeeze(), params.visDir.. '/occX' .. iter .. '.png')
+            vUtils.imsave(pred:max(4):squeeze(), params.visDir.. '/occY' .. iter .. '.png')
+            vUtils.imsave(pred:max(5):squeeze(), params.visDir.. '/occZ' .. iter .. '.png')
         end
         if(params.matsave==1) then
             local vox_dir=params.voxelSaveDir.. tostring(iter)
