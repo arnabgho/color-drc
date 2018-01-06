@@ -12,6 +12,6 @@ add_path(os.getcwd())
 def params():
     config = {}
     config['basedir'] = os.getcwd()
-    config['shapenetDir'] = '/data1/shubhtuls/cachedir/Datasets/shapeNetCoreV1/'
+    config['shapenetDir'] = '/home/viveka/ShapeNetCore.v2'   # '/data1/shubhtuls/cachedir/Datasets/shapeNetCoreV1/'
     config['renderPrecomputeDir'] = osp.join(config['basedir'],'..','..','..','cachedir','blenderRenderPreprocess')
     return config

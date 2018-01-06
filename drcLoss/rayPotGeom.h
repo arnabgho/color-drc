@@ -16,6 +16,6 @@ typedef struct rpGeom{
 rpGeom* rpGeom_init(grid* g, double maxDepth, int useProj);
 
 void rpGeom_forward(rpGeom* rp, double *predsGeom, double* gradPredsGeom, double* E_psi, double *origins, double*directions, double* depths, int bs, int nrays, int useMaskOnly);
-void rpGeom_forward_weighted(rpGeom* rp, double *predsGeom, double* gradPredsGeom, double* E_psi, double *origins, double*directions, double* depths, double* weights, int bs, int nrays, int useMaskOnly);
-
+//void rpGeom_forward_weighted(rpGeom* rp, double *predsGeom, double* gradPredsGeom, double* E_psi, double *origins, double*directions, double* depths, double* weights, int bs, int nrays, int useMaskOnly);
+void rpGeom_weighted_forward(rpGeom* rp, double *predsGeom, double* gradPredsGeom, double* E_psi, double *origins, double*directions, double* depths, double* weights, int bs, int nrays, int useMaskOnly);
 #endif
