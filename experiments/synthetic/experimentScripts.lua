@@ -14,7 +14,7 @@ local synset = classToSynset[params.class]
 -- print(cmd)
 
 -- ShapeNet Masked VAE Heads with Colored Voxels Experiment
-local cmd = string.format('gpu=%d name=%s_maskedvaeheadsvoxels disp=%d synset=%s imsave=%d numTrainIter=%d th synthetic/maskedVaeShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset,params.imsave,params.numTrainIter)
+--local cmd = string.format('gpu=%d name=%s_maskedvaeheadsvoxels disp=%d synset=%s imsave=%d numTrainIter=%d th synthetic/maskedVaeShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset,params.imsave,params.numTrainIter)
 -- print(cmd)
 
 -- ShapeNet TV loss Textured  Masked Conditional Adversarial Occupancy to Colored Voxels with Colored Voxels Experiment
@@ -60,6 +60,10 @@ local cmd = string.format('gpu=%d name=%s_maskedvaeheadsvoxels disp=%d synset=%s
 
 -- ShapeNet Masked Heads with Colored Voxels Experiment
 --local cmd = string.format('gpu=%d name=%s_maskedheadsvoxels disp=%d synset=%s imsave=%d numTrainIter=%d th synthetic/maskedShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset,params.imsave,params.numTrainIter)
+--print(cmd)
+
+-- ShapeNet Masked Heads with Colored Voxels Experiment 2 Discriminators For Occupancy and Colors
+local cmd = string.format('gpu=%d name=%s_maskedheadsvoxels disp=%d synset=%s imsave=%d numTrainIter=%d th synthetic/d_occ_d_color_maskedShapenetHeadsVoxels.lua',params.gpu,params.class, params.disp, synset,params.imsave,params.numTrainIter)
 --print(cmd)
 
 -- ShapeNet Occ Masked Heads with Colored Voxels Experiment

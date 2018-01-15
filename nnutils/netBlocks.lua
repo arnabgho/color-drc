@@ -212,13 +212,14 @@ function M.SimpleDiscriminator(nInputChannels,ndf,useBn)
    return netD
 end
 
-function M.ConditionalDiscriminator(nInputChannels,ndf,useBn)
+function M.ConditionalDiscriminator(3DInputChannels,2DInputChannels,ndf,useBn)
    local useBn = useBn ~= false and true
    local ndf = ndf or 8
-
+   local 3DInputChannels= 3DInputChannels or 3
+   local 2DInputChannels= 2DInputChannels or 3
    local netD=nn.Sequential()
    local net3D = nn.Sequential()
-   --input is (nInputChannels) x 32 x 32 x 32
+   --input is (3DnInputChannels) x 32 x 32 x 32
    net3D:add(nn.VolumetricConvolution(nInputChannels, ndf, 4, 4, 4, 2, 2, 2, 1, 1, 1))
    net3D:add(nn.LeakyReLU(0.2, true))
    -- state size: (ndf) x 16 x 16 x 16
