@@ -212,15 +212,15 @@ function M.SimpleDiscriminator(nInputChannels,ndf,useBn)
    return netD
 end
 
-function M.ConditionalDiscriminator(3DInputChannels,2DInputChannels,ndf,useBn)
+function M.ConditionalDiscriminator(nInputChannels3D,nInputChannels2D,ndf,useBn)
    local useBn = useBn ~= false and true
    local ndf = ndf or 8
-   local 3DInputChannels= 3DInputChannels or 3
-   local 2DInputChannels= 2DInputChannels or 3
+   local nInputChannels3D= nInputChannels3D or 3
+   local nInputChannels2D= nInputChannels2D or 3
    local netD=nn.Sequential()
    local net3D = nn.Sequential()
    --input is (3DnInputChannels) x 32 x 32 x 32
-   net3D:add(nn.VolumetricConvolution(nInputChannels, ndf, 4, 4, 4, 2, 2, 2, 1, 1, 1))
+   net3D:add(nn.VolumetricConvolution(nInputChannels3D, ndf, 4, 4, 4, 2, 2, 2, 1, 1, 1))
    net3D:add(nn.LeakyReLU(0.2, true))
    -- state size: (ndf) x 16 x 16 x 16
    net3D:add(nn.VolumetricConvolution(ndf, ndf * 2, 4, 4, 4 , 2, 2, 2 ,1 , 1, 1))
@@ -233,7 +233,7 @@ function M.ConditionalDiscriminator(3DInputChannels,2DInputChannels,ndf,useBn)
 
    local net2D = nn.Sequential()
    --input is (nInputChannels) x 64 x 64
-   net2D:add(nn.SpatialConvolution(nInputChannels, ndf, 4, 4,  2, 2,  1, 1))
+   net2D:add(nn.SpatialConvolution(nInputChannels2D, ndf, 4, 4,  2, 2,  1, 1))
    net2D:add(nn.LeakyReLU(0.2, true))
    -- state size: (ndf) x 32 x 32 
    net2D:add(nn.SpatialConvolution(ndf, ndf * 2, 4, 4 , 2,  2 ,1 ,  1))

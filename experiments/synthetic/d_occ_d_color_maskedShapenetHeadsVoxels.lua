@@ -7,6 +7,7 @@ local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
+local model_utils = dofile('../utils/model_utils.lua')
 -----------------------------
 --------parameters-----------
 local params = {}
@@ -143,7 +144,7 @@ local occ_netDParameters, occ_netDGradParameters = occ_netD:getParameters()
 local col_netDParameters, col_netDGradParameters = col_netD:getParameters()
 local tm = torch.Timer()
 local data_tm = torch.Timer()
-local imgs, pred, rays
+local imgs, pred, rays,voxelsOcc, voxelsGt 
 
 local col_input=torch.Tensor(params.batchSize,3,params.gridSizeX,params.gridSizeY,params.gridSizeZ)
 local occ_input=torch.Tensor(params.batchSize,1,params.gridSizeX,params.gridSizeY,params.gridSizeZ)
@@ -163,7 +164,7 @@ local fx = function(x)
     data_tm:stop()
     err=0
     --print('Data loaded')
-    local voxelsOcc=torch.sum(voxelsGt,2)
+    voxelsOcc=torch.sum(voxelsGt,2)
     voxelsOcc:apply( function(x) 
       if x>2.99 then return 0
       else return 1
@@ -273,7 +274,7 @@ function eval()
     imgs, voxelsGt = dataLoaderTest:forward()
     err_test=0
     --print('Data loaded')
-    local voxelsOcc=torch.sum(voxelsGt,2)
+    voxelsOcc=torch.sum(voxelsGt,2)
     voxelsOcc:apply( function(x) 
       if x>2.99 then return 0
       else return 1
@@ -399,6 +400,6 @@ for iter=1,params.numTrainIter do
         torch.save(params.snapshotDir .. '/iter'.. iter .. '_colG.t7', col_netD )
     end
     optim.adam(fx, netParameters, optimState)
-    optim.adam(occ_fDx, occ_netDParameters, occ_optimState)
     optim.adam(col_fDx, col_netDParameters, col_optimState)
+    optim.adam(occ_fDx, occ_netDParameters, occ_optimState)
 end
