@@ -7,7 +7,6 @@ local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
-local gaussian=dofile( '../nnutils/Gaussian.lua')
 -----------------------------
 --------parameters-----------
 local params = {}
@@ -17,16 +16,15 @@ params.gpu = 1
 params.batchSize = 32
 params.imgSizeY = 64
 params.imgSizeX = 64
-params.synset = 3001627 --2958343 --chair:3001627, aero:2691156, car:2958343
+params.synset = 2958343 --chair:3001627, aero:2691156, car:2958343
 
 params.gridSizeX = 32
 params.gridSizeY = 32
 params.gridSizeZ = 32
 params.lambda=0.9
-params.lambda_kld=0.0001
 params.matsave=1
-params.imsave = 1
-params.disp = 1
+params.imsave = 0
+params.disp = 0
 params.bottleneckSize = 400
 params.visIter = 1000
 params.nConvEncLayers = 5
@@ -35,24 +33,23 @@ params.nConvEncChannelsInit = 8
 params.nVoxelChannels = 3
 params.nOccChannels = 1
 params.numTrainIter = 500000
-params.ip ='129.67.94.233' --'131.159.40.120'
+params.ip = '131.159.40.120'
 params.port = 8000
 -- one-line argument parser. parses enviroment variables to override the defaults
 for k,v in pairs(params) do params[k] = tonumber(os.getenv(k)) or os.getenv(k) or params[k] end
 if params.disp == 0 then params.display = false else params.display = true end
 if params.imsave == 0 then params.imsave = false end
+params.name = params.name .. tostring(params.lambda)
 params.visDir = '../cachedir/visualization/' .. params.name
 params.snapshotDir = '../cachedir/snapshots/shapenet/' .. params.name
 params.imgSize = torch.Tensor({params.imgSizeX, params.imgSizeY})
 params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridSizeZ})
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
---params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
+params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
 --params.modelsDataDir='/mnt/raid/viveka/data/'..params.synset .. '/'
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
---params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
-params.modelsDataDir='../../data/color-3d/Images/'..params.synset .. '/'
-params.voxelsDir = '../../data/color-3d/vox_dim32/' .. params.synset .. '/'
+params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
 params.voxelSaveDir= params.visDir .. '/vox'
 print(params)
 -----------------------------
@@ -69,7 +66,6 @@ fout:flush()
 ----------LossComp-----------
 local lossFunc = nn.BCECriterion()
 local colLossFunc = nn.MSECriterion()
---local colLossFunc = nn.AbsCriterion()
 -----------------------------
 ----------Encoder------------
 local encoder, nOutChannels = netBlocks.convEncoderSimple2d(params.nConvEncLayers,params.nConvEncChannelsInit,3,true) --output is nConvEncChannelsInit*pow(2,nConvEncLayers-1) X imgSize/pow(2,nConvEncLayers)
@@ -81,61 +77,34 @@ for nLayers=1,2 do --fc for joint reasoning
     bottleneck:add(nn.SpatialConvolution(nInputCh,params.bottleneckSize,1,1)):add(nn.SpatialBatchNormalization(params.bottleneckSize)):add(nn.LeakyReLU(0.2, true))
     nInputCh = params.bottleneckSize
 end
-bottleneck:add(nn.Reshape(params.bottleneckSize,true))
 encoder:add(bottleneck)
-
---- Code for the VAE part
-
-
--- Create latent Z parameter layer
-local zLayer = nn.ConcatTable()
-zLayer:add(nn.Linear(params.bottleneckSize, params.bottleneckSize)) -- Mean μ of Z
-zLayer:add(nn.Linear( params.bottleneckSize , params.bottleneckSize)) -- Log variance σ^2 of Z (diagonal covariance)
-encoder:add(zLayer) -- Add Z parameter layer
-
--- Create σε module
-local noiseModule = nn.Sequential()
-local noiseModuleInternal = nn.ConcatTable()
-local stdModule = nn.Sequential()
-stdModule:add(nn.MulConstant(0.5)) -- Compute 1/2 log σ^2 = log σ
-stdModule:add(nn.Exp()) -- Compute σ
-noiseModuleInternal:add(stdModule) -- Standard deviation σ
-noiseModuleInternal:add(nn.Gaussian(0, 1)) -- Sample noise ε ~ N(0, 1)
-noiseModule:add(noiseModuleInternal)
-noiseModule:add(nn.CMulTable()) -- Compute σε
-
--- Create sampler q(z) = N(z; μ, σI) = μ + σε (reparametrization trick)
-local sampler = nn.Sequential()
-local samplerInternal = nn.ParallelTable()
-samplerInternal:add(nn.Identity()) -- Pass through μ 
-samplerInternal:add(noiseModule) -- Create noise σ * ε
-sampler:add(samplerInternal)
-sampler:add(nn.CAddTable())
------------------------
-
-
 encoder:apply(netInit.weightsInit)
 --print(encoder)
 ---------------------------------
 ----------World Decoder----------
 local featSpSize = params.gridSize/torch.pow(2,params.nConvDecLayers)
-local decoder  = nn.Sequential():add(nn.Reshape(params.bottleneckSize,1,1,true)):add(nn.SpatialConvolution(params.bottleneckSize,nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3],1,1,1)):add(nn.SpatialBatchNormalization(nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3])):add(nn.ReLU(true)):add(nn.Reshape(nOutChannels,featSpSize[1],featSpSize[2],featSpSize[3],true))
+local decoder  = nn.Sequential():add(nn.SpatialConvolution(params.bottleneckSize,nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3],1,1,1)):add(nn.SpatialBatchNormalization(nOutChannels*featSpSize[1]*featSpSize[2]*featSpSize[3])):add(nn.ReLU(true)):add(nn.Reshape(nOutChannels,featSpSize[1],featSpSize[2],featSpSize[3],true))
 decoder:add(netBlocks.convDecoderSimple3dHeads(params.nConvDecLayers,nOutChannels,params.nConvEncChannelsInit,params.nVoxelChannels,params.nOccChannels,true))
 decoder:apply(netInit.weightsInit)
 -----------------------------
 ----------Recons-------------
 local splitUtil = dofile('../benchmark/synthetic/splits.lua')
 local trainModels = splitUtil.getSplit(params.synset)['train']
+local testModels = splitUtil.getSplit(params.synset)['test']
+--local trainModels = {trainModels[1]}
+--print(trainModels)
 local dataLoader = data.dataLoader(params.modelsDataDir, params.voxelsDir, params.batchSize, params.imgSize, params.gridSize, trainModels)
-local netRecons = nn.Sequential():add(encoder):add(sampler):add(decoder)
+local dataLoaderTest = data.dataLoader(params.modelsDataDir, params.voxelsDir, params.batchSize, params.imgSize, params.gridSize, testModels)
+local netRecons = nn.Sequential():add(encoder):add(decoder)
 --local netRecons = torch.load(params.snapshotDir .. '/iter10000.t7')
+print(netRecons)
 netRecons = netRecons:cuda()
 lossFunc = lossFunc:cuda()
 colLossFunc = colLossFunc:cuda()
-print(encoder)
+--print(encoder)
 --print(decoder)
 local err = 0
-local err_kld =0
+
 -- Optimization parameters
 local optimState = {
    learningRate = 0.0001,
@@ -161,35 +130,24 @@ local fx = function(x)
       else return 1
       end 
     end)
-    local occMask=torch.repeatTensor(voxelsOcc,1,3,1,1,1)
+
+    local occMask=torch.repeatTensor(voxelsOcc,1,3,1,1,1) 
 
     imgs = imgs:cuda()
     voxelsGt = voxelsGt:cuda()
     voxelsOcc= voxelsOcc:cuda()
-    occMask=occMask:cuda()
-
+    occMask = occMask:cuda()
     netRecons:forward(imgs)
     color=netRecons.output[1]
     pred=netRecons.output[2]
-    
+
     color:cmul(occMask)
     voxelsGt:cmul(occMask)
-    
     err = (1-params.lambda)*lossFunc:forward(pred, voxelsOcc)
-    err = err +  params.lambda*colLossFunc:forward(color,voxelsGt)
-    local gradPred = (1-params.lambda)lossFunc:backward(pred, voxelsOcc)
-    local gradColor = params.lambda * colLossFunc:backward(color,voxelsGt)
+    err = err + (params.lambda)*colLossFunc:forward(color,voxelsGt)
+    local gradPred = (1-params.lambda)*lossFunc:backward(pred, voxelsOcc)
+    local gradColor = (params.lambda)*colLossFunc:backward(color,voxelsGt)
     netRecons:backward(imgs, { gradColor , gradPred})
-
-	local mean,logVar=table.unpack(encoder.output)
-	local var = torch.exp(logVar)
-	err_kld = 0.5 * torch.sum(torch.pow(mean, 2) + var - logVar - 1)	
-	err_kld = err_kld / params.batchSize
-
-    local gradKLLoss = { params.lambda_kld *  mean / params.batchSize, params.lambda_kld * 0.5*(var - 1) / params.batchSize }  -- Normalise gradient of loss (same normalisation as BCECriterion)
-    encoder:backward( imgs , gradKLLoss)
-
-	err=err+params.lambda_kld*err_kld		
     tm:stop()
     return err, netGradParameters
 end
@@ -218,15 +176,8 @@ function eval()
     voxelsGt:cmul(occMask)
     err_test = (1-params.lambda)*lossFunc:forward(pred, voxelsOcc)
     err_test = err_test + params.lambda*colLossFunc:forward(color,voxelsGt)
-
-	local mean,logVar=table.unpack(encoder.output)
-	local var = torch.exp(logVar)
-	err_kld = 0.5 * torch.sum(torch.pow(mean, 2) + var - logVar - 1)	
-	err_kld = err_kld / params.batchSize
-	err_test=err_test+params.lambda_kld*err_kld		
     return err_test 
 end
-
 
 --print(netRecons)
 -----------------------------
@@ -239,15 +190,8 @@ local forwIter = 0
 train_err={}
 test_err={}
 for iter=1,params.numTrainIter do
-    --print(iter,err)
+    print(iter,err)
     --print(('Data/Total time : %f/%f'):format(data_tm:time().real,tm:time().real))
-	print(('Epoch: [%d][%8d / %8d]\t Time: %.3f  DataTime: %.3f  '
-        .. '  Err_G: %.4f  Err_KLD: %.4f'):format(
-        iter, ((iter-1) / params.batchSize),
-        math.floor( params.numTrainIter / params.batchSize),
-        tm:time().real, data_tm:time().real,
-        err and err or -1, err_kld and err_kld or -1))
- 
     fout:write(string.format('%d %f\n',iter,err))
     table.insert(train_err,err)
     fout:flush()
@@ -294,7 +238,7 @@ for iter=1,params.numTrainIter do
             vUtils.imsave(pred:max(3):squeeze(), params.visDir.. '/occX' .. iter .. '.png')
             vUtils.imsave(pred:max(4):squeeze(), params.visDir.. '/occY' .. iter .. '.png')
             vUtils.imsave(pred:max(5):squeeze(), params.visDir.. '/occZ' .. iter .. '.png')
-       end
+        end
         if(params.matsave==1) then
             local vox_dir=params.voxelSaveDir.. tostring(iter)
             paths.mkdir(vox_dir)

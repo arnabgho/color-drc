@@ -2,8 +2,8 @@ torch.manualSeed(1)
 require 'cunn'
 require 'optim'
 matio=require 'matio'
-local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
---local data = dofile('../data/synthetic/shapenetColorRenderedVoxels.lua')
+--local data = dofile('../data/synthetic/shapenetColorVoxels.lua')
+local data = dofile('../data/synthetic/shapenetColorRenderedVoxels.lua')
 local netBlocks = dofile('../nnutils/netBlocks.lua')
 local netInit = dofile('../nnutils/netInit.lua')
 local vUtils = dofile('../utils/visUtils.lua')
@@ -17,16 +17,15 @@ params.gpu = 1
 params.batchSize = 32
 params.imgSizeY = 64
 params.imgSizeX = 64
-params.synset = 3001627 --2958343 --chair:3001627, aero:2691156, car:2958343
+params.synset = 2958343 --chair:3001627, aero:2691156, car:2958343
 
 params.gridSizeX = 32
 params.gridSizeY = 32
 params.gridSizeZ = 32
 params.lambda=0.9
-params.lambda_kld=0.0001
 params.matsave=1
-params.imsave = 1
-params.disp = 1
+params.imsave = 0
+params.disp = 0
 params.bottleneckSize = 400
 params.visIter = 1000
 params.nConvEncLayers = 5
@@ -34,8 +33,8 @@ params.nConvDecLayers = 4
 params.nConvEncChannelsInit = 8
 params.nVoxelChannels = 3
 params.nOccChannels = 1
-params.numTrainIter = 500000
-params.ip ='129.67.94.233' --'131.159.40.120'
+params.numTrainIter = 10000
+params.ip = '131.159.40.120'
 params.port = 8000
 -- one-line argument parser. parses enviroment variables to override the defaults
 for k,v in pairs(params) do params[k] = tonumber(os.getenv(k)) or os.getenv(k) or params[k] end
@@ -48,11 +47,9 @@ params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridS
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
 --params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
---params.modelsDataDir='/mnt/raid/viveka/data/'..params.synset .. '/'
+params.modelsDataDir='/mnt/raid/viveka/data/'..params.synset .. '/'
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
---params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
-params.modelsDataDir='../../data/color-3d/Images/'..params.synset .. '/'
-params.voxelsDir = '../../data/color-3d/vox_dim32/' .. params.synset .. '/'
+params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
 params.voxelSaveDir= params.visDir .. '/vox'
 print(params)
 -----------------------------
@@ -186,10 +183,10 @@ local fx = function(x)
 	err_kld = 0.5 * torch.sum(torch.pow(mean, 2) + var - logVar - 1)	
 	err_kld = err_kld / params.batchSize
 
-    local gradKLLoss = { params.lambda_kld *  mean / params.batchSize, params.lambda_kld * 0.5*(var - 1) / params.batchSize }  -- Normalise gradient of loss (same normalisation as BCECriterion)
+    local gradKLLoss = {mean / params.batchSize, 0.5*(var - 1) / params.batchSize }  -- Normalise gradient of loss (same normalisation as BCECriterion)
     encoder:backward( imgs , gradKLLoss)
 
-	err=err+params.lambda_kld*err_kld		
+	err=err+err_kld		
     tm:stop()
     return err, netGradParameters
 end
@@ -223,7 +220,7 @@ function eval()
 	local var = torch.exp(logVar)
 	err_kld = 0.5 * torch.sum(torch.pow(mean, 2) + var - logVar - 1)	
 	err_kld = err_kld / params.batchSize
-	err_test=err_test+params.lambda_kld*err_kld		
+	err_test=err_test+err_kld		
     return err_test 
 end
 

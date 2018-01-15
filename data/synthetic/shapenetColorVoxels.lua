@@ -45,9 +45,11 @@ function dataLoader:forward()
         local imgsDir = paths.concat(self.imgsDir, self.modelNames[mId]) 
         --local nImgs = #BuildArray(paths.files(imgsDir,'.mat'))
         --local inpImgNum = torch.random(0,nImgs-1)
-        local imgAzimuthal = {'015', '030', '045', '060', '075', '090', '105', '120', '135', '150', '165', '180', '195', '210', '225', '240', '255', '270', '285', '300', '315', '330', '345', '360'}
+        --local imgAzimuthal = {'015', '030', '045', '060', '075', '090', '105', '120', '135', '150', '165', '180', '195', '210', '225', '240', '255', '270', '285', '300', '315', '330', '345', '360'}
+        local imgAzimuthal = {'15', '30', '45', '60', '75', '90', '105', '120', '135', '150', '165', '180', '195', '210', '225', '240', '255', '270', '285', '300', '315', '330', '345', '0'}
         local inpImgNum = torch.random(self.gen,1,#imgAzimuthal)
-        local imgRgb = image.load(string.format('%s/imgs/a%s_e030.jpg',imgsDir,imgAzimuthal[inpImgNum]))  --TODO try masks instead of imgs
+        --local imgRgb = image.load(string.format('%s/imgs/a%s_e030.jpg',imgsDir,imgAzimuthal[inpImgNum]))  --TODO try masks instead of imgs
+        local imgRgb = image.load(string.format( '%s/image_e30.000000_a%s.000000.png',imgsDir,imgAzimuthal[inpImgNum]))  --TODO try masks instead of imgs
         --local imgRgb = image.load(string.format('%s/render_%d.png',imgsDir,inpImgNum))
         if(self.bGImgsList) then
             -- useful for PASCAL VOC experiments, we'll set the bgImgsList externally

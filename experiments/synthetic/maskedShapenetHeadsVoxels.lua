@@ -16,7 +16,7 @@ params.gpu = 1
 params.batchSize = 32
 params.imgSizeY = 64
 params.imgSizeX = 64
-params.synset = 2958343 --chair:3001627, aero:2691156, car:2958343
+params.synset = 3001627 --2958343 --chair:3001627, aero:2691156, car:2958343
 
 params.gridSizeX = 32
 params.gridSizeY = 32
@@ -33,7 +33,7 @@ params.nConvEncChannelsInit = 8
 params.nVoxelChannels = 3
 params.nOccChannels = 1
 params.numTrainIter = 500000
-params.ip = '131.159.40.120'
+params.ip = '129.67.94.233'--'131.159.40.120'
 params.port = 8000
 -- one-line argument parser. parses enviroment variables to override the defaults
 for k,v in pairs(params) do params[k] = tonumber(os.getenv(k)) or os.getenv(k) or params[k] end
@@ -46,10 +46,12 @@ params.imgSize = torch.Tensor({params.imgSizeX, params.imgSizeY})
 params.gridSize = torch.Tensor({params.gridSizeX, params.gridSizeY, params.gridSizeZ})
 params.synset = '0' .. tostring(params.synset) --to resolve string/number issues in passing bash arguments
 --params.modelsDataDir = '../cachedir/blenderRenderPreprocess/' .. params.synset .. '/'
-params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
+--params.modelsDataDir = '../../../arnab/nips16_PTN/data/shapenetcore_viewdata/' .. params.synset .. '/'
 --params.modelsDataDir='/mnt/raid/viveka/data/'..params.synset .. '/'
+params.modelsDataDir='../../data/color-3d/Images/'..params.synset .. '/'
+params.voxelsDir = '../../data/color-3d/vox_dim32/' .. params.synset .. '/'
 --params.voxelsDir = '../cachedir/shapenet/modelVoxels/' .. params.synset .. '/'
-params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
+--params.voxelsDir = '../../../arnab/nips16_PTN/data/shapenetcore_colvoxdata/' .. params.synset .. '/'
 params.voxelSaveDir= params.visDir .. '/vox'
 print(params)
 -----------------------------
